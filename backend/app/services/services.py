@@ -7,6 +7,11 @@ from backend.app.models.models import Order, PurchaseOrder, SalesHistory
 from ai.forecasting.engine import StatisticalForecastEngine
 from ai.inventory.optimization import InventoryOptimizer
 from ai.risk.engine import InventoryRiskEngine
+from ai.procurement.engine import ProcurementOptimizerEngine
+from ai.assortment.engine import AssortmentOptimizerEngine
+from backend.app.services.recommendation_engine import UnifiedRecommendationEngine
+from backend.app.services.mapping_engine import CanonicalMappingEngine
+from backend.app.services.validation_engine import DataValidationEngine
 
 class SupplyChainService:
     def __init__(self, db: Session):
@@ -20,8 +25,13 @@ class SupplyChainService:
         self.forecast_engine = StatisticalForecastEngine(db)
         self.optimizer = InventoryOptimizer(db)
         self.risk_engine = InventoryRiskEngine(db)
+        self.procurement_engine = ProcurementOptimizerEngine(db)
+        self.assortment_engine = AssortmentOptimizerEngine(db)
+        self.recommendation_engine = UnifiedRecommendationEngine(db)
+        self.mapping_engine = CanonicalMappingEngine()
+        self.validation_engine = DataValidationEngine(db)
 
-    def get_control_tower_summary((self)) -> Dict[str, Any]:
+    def get_control_tower_summary(self) -> Dict[str, Any]:
         products = self.product_repo.get_all()
         warehouses = self.warehouse_repo.get_all()
         inventory_items = self.inventory_repo.get_all()
@@ -41,6 +51,11 @@ class SupplyChainService:
 
         top_risks = [r for r in risks if r["stockout_risk_level"] in ["CRITICAL", "HIGH"]][:10]
 
+        # Additional Wisualyst module metrics
+        proc_intel = self.procurement_engine.generate_procurement_intelligence()
+        assort_intel = self.assortment_engine.generate_assortment_intelligence()
+        readiness = self.validation_engine.evaluate_readiness()
+
         return {
             "total_products": len(products),
             "total_warehouses": len(warehouses),
@@ -51,25 +66,13 @@ class SupplyChainService:
             "excess_inventory_count": excess_count,
             "open_purchase_orders": open_pos,
             "recent_sales_30d_revenue": round(rev_total, 2),
-            "top_risk_products": top_risks
+            "top_risk_products": top_risks,
+            "potential_savings": proc_intel.get("potential_savings", 0.0),
+            "avg_supplier_otif": proc_intel.get("avg_supplier_otif_pct", 92.5),
+            "avg_store_gmroi": assort_intel.get("avg_store_gmroi", 2.4),
+            "overall_readiness_pct": readiness.get("overall_readiness_pct", 91.0)
         }
 
     def get_inventory_recommendations(self) -> List[Dict[str, Any]]:
-        risks = self.risk_engine.get_all_inventory_risks()
-        recommendations = []
-        for r in risks:
-            if r["recommended_order_quantity"] > 0 or r["stockout_risk_level"] in ["CRITICAL", "HIGH"]:
-                recommendations.append({
-                    "sku": r["sku"],
-                    "product_name": r["product_name"],
-                    "warehouse": r["warehouse_name"],
-                    "risk_level": r["stockout_risk_level"],
-                    "current_stock": r["current_stock"],
-                    "reorder_point": r["reorder_point"],
-                    "days_of_inventory": r["days_of_inventory"],
-                    "recommended_reorder_qty": r["recommended_order_quantity"],
-                    "supplier": r["supplier_name"],
-                    "lead_time_days": r["lead_time_days"],
-                    "action_required": f"Issue PO for {r['recommended_order_quantity']} units with {r['supplier_name']}" if r["recommended_order_quantity"] > 0 else "Monitor closely"
-                })
-        return recommendations
+        return self.recommendation_engine.get_unified_recommendations()
+

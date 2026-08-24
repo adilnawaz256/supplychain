@@ -155,11 +155,57 @@ class Supplier(Base):
     name = Column(String(150), nullable=False)
     contact_email = Column(String(150), nullable=True)
     rating = Column(Float, default=4.5)
+    otif_score = Column(Float, default=92.5) # On-Time In-Full percentage
     lead_time_avg_days = Column(Integer, default=7)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     supplier_products = relationship("SupplierProduct", back_populates="supplier")
     purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
+
+class RetailSpace(Base):
+    __tablename__ = "retail_spaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(String(50), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    category = Column(String(100), nullable=False)
+    allocated_space_sqm = Column(Float, nullable=False, default=1.0)
+    display_units = Column(Integer, nullable=False, default=10)
+    shelf_capacity = Column(Integer, nullable=False, default=50)
+
+    product = relationship("Product")
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    industry = Column(String(100), nullable=False, default="Retail & Consumer Goods")
+    region = Column(String(100), nullable=False, default="Global / Middle East")
+    status = Column(String(50), default="ACTIVE") # CREATED, ONBOARDING, ACTIVE
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    type = Column(String(50), nullable=False) # SFTP, DIRECT_DB, ZOHO
+    name = Column(String(100), nullable=False)
+    status = Column(String(50), default="CONNECTED") # CONNECTING, CONNECTED, SYNCED, ERROR
+    config_json = Column(Text, nullable=True)
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+class FieldMappingRecord(Base):
+    __tablename__ = "field_mapping_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_type = Column(String(50), nullable=False) # SFTP, DIRECT_DB, ZOHO
+    source_field = Column(String(100), nullable=False)
+    canonical_field = Column(String(100), nullable=False)
+    confidence = Column(Float, default=0.9)
+    confirmed = Column(Integer, default=1)
+
 
 class SupplierProduct(Base):
     __tablename__ = "supplier_products"

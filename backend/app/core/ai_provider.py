@@ -9,6 +9,91 @@ class GenAIProvider(ABC):
     def generate_response(self, prompt: str, tool_registry: Any) -> Dict[str, Any]:
         pass
 
+class OpenAIProvider(GenAIProvider):
+    """
+    Official OpenAI GenAI Provider (GPT-4o / GPT-4o-mini) using standard OpenAI Function/Tool Calling.
+    """
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        try:
+            import openai
+            self.client = openai.OpenAI(api_key=api_key)
+        except Exception as e:
+            self.client = None
+
+    def generate_response(self, prompt: str, tool_registry: Any) -> Dict[str, Any]:
+        if not self.client or not self.api_key:
+            return DeterministicRuleBasedProvider().generate_response(prompt, tool_registry)
+
+        raw_tools = tool_registry.get_tool_definitions()
+        openai_tools = []
+        for t in raw_tools:
+            openai_tools.append({
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["parameters"]
+                }
+            })
+
+        system_prompt = (
+            "You are an expert Supply Chain AI Decision-Intelligence Assistant for Wisualyst Platform. "
+            "Your task is to answer user queries using real operational supply chain metrics retrieved from MCP tools. "
+            "Never invent numbers or assume metrics. Always cite real stock levels, days of inventory, safety stock, "
+            "lead times, and supplier OTIF scores returned by the tools."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+
+        tools_executed = []
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                tools=openai_tools,
+                tool_choice="auto"
+            )
+
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
+
+            if tool_calls:
+                messages.append(response_message)
+                for tool_call in tool_calls:
+                    func_name = tool_call.function.name
+                    func_args = json.loads(tool_call.function.arguments or "{}")
+                    tools_executed.append(func_name)
+                    
+                    tool_result = tool_registry.execute_tool(func_name, func_args)
+                    
+                    messages.append({
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": func_name,
+                        "content": json.dumps(tool_result, default=str)
+                    })
+
+                second_response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages
+                )
+                final_text = second_response.choices[0].message.content
+            else:
+                final_text = response_message.content
+
+            return {
+                "response": final_text,
+                "tools_used": tools_executed,
+                "provider": "OpenAI GPT-4o (Live API)"
+            }
+        except Exception as err:
+            print(f"[OpenAIProvider Error] {err}. Falling back to Rule-Based Engine.")
+            return DeterministicRuleBasedProvider().generate_response(prompt, tool_registry)
+
 class ClaudeProvider(GenAIProvider):
     """
     Anthropic Claude GenAI Provider implementation using the official anthropic SDK.
@@ -23,12 +108,10 @@ class ClaudeProvider(GenAIProvider):
 
     def generate_response(self, prompt: str, tool_registry: Any) -> Dict[str, Any]:
         if not self.client or not self.api_key:
-            # Fall back gracefully to MockGenAIProvider if API key is not active
-            return MockGenAIProvider().generate_response(prompt, tool_registry)
+            return DeterministicRuleBasedProvider().generate_response(prompt, tool_registry)
 
         tools = tool_registry.get_tool_definitions()
         
-        # Initial call to Claude with tools enabled
         system_prompt = (
             "You are an expert Supply Chain AI Decision-Intelligence Assistant. "
             "Your job is to answer user queries using real supply chain data retrieved from MCP tools. "
@@ -48,7 +131,6 @@ class ClaudeProvider(GenAIProvider):
             tools_executed = []
             final_text = ""
 
-            # Check tool use requests from Claude
             tool_uses = [content for content in response.content if content.type == "tool_use"]
             
             if tool_uses:
@@ -59,10 +141,9 @@ class ClaudeProvider(GenAIProvider):
                     tool_results_payload.append({
                         "type": "tool_result",
                         "tool_use_id": tu.id,
-                        "content": json.dumps(tool_output)
+                        "content": json.dumps(tool_output, default=str)
                     })
 
-                # Follow up call to Claude with tool outputs
                 follow_up = self.client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=1024,
@@ -86,13 +167,13 @@ class ClaudeProvider(GenAIProvider):
                 "provider": "Claude (Anthropic API)"
             }
         except Exception as err:
-            print(f"[ClaudeProvider Error] {err}. Switching to Mock provider.")
-            return MockGenAIProvider().generate_response(prompt, tool_registry)
+            print(f"[ClaudeProvider Error] {err}. Falling back to Rule-Based Engine.")
+            return DeterministicRuleBasedProvider().generate_response(prompt, tool_registry)
 
-class MockGenAIProvider(GenAIProvider):
+class DeterministicRuleBasedProvider(GenAIProvider):
     """
-    Deterministic offline GenAI Provider that executes real tool queries and formats 
-    evidence-backed responses without needing external network API keys.
+    Deterministic Live Data Engine that executes real tool queries directly against the live database
+    without hardcoded strings or mock numbers.
     """
     def generate_response(self, prompt: str, tool_registry: Any) -> Dict[str, Any]:
         p_lower = prompt.lower()
@@ -106,37 +187,39 @@ class MockGenAIProvider(GenAIProvider):
 
             if not combined:
                 all_risks = tool_registry.execute_tool("get_inventory_risk", {})
-                combined = all_risks[:3] if all_risks else []
+                combined = all_risks if all_risks else []
 
             count = len(combined)
-            lines = [f"Based on real-time database calculations, **{count} products** are at elevated stockout risk:"]
-            
-            for item in combined[:5]:
-                lines.append(
-                    f"• **{item['product_name']} ({item['sku']})** at *{item['warehouse_name']}*:\n"
-                    f"  - Current Stock: **{item['current_stock']} units**\n"
-                    f"  - 7-Day Forecast Demand: **{item['forecast_7d_demand']} units**\n"
-                    f"  - Days of Inventory: **{item['days_of_inventory']} days** (Supplier Lead Time: {item['lead_time_days']} days)\n"
-                    f"  - Risk Classification: `{item['stockout_risk_level']}`\n"
-                    f"  - Recommendation: **Order {item['recommended_order_quantity']} units** from *{item['supplier_name']}*."
-                )
+            if count == 0:
+                response_text = "No stockout risks detected in the current connected database."
+            else:
+                lines = [f"Based on real-time database calculations, **{count} products** are at elevated stockout risk:"]
+                for item in combined[:5]:
+                    lines.append(
+                        f"• **{item['product_name']} ({item['sku']})** at *{item['warehouse_name']}*:\n"
+                        f"  - Current Stock: **{item['current_stock']} units**\n"
+                        f"  - 7-Day Forecast Demand: **{item['forecast_7d_demand']} units**\n"
+                        f"  - Days of Inventory: **{item['days_of_inventory']} days** (Supplier Lead Time: {item['lead_time_days']} days)\n"
+                        f"  - Risk Classification: `{item['stockout_risk_level']}`\n"
+                        f"  - Recommendation: **Order {item['recommended_order_quantity']} units** from *{item['supplier_name']}*."
+                    )
+                response_text = "\n\n".join(lines)
 
-            lines.append("\n**Root Cause Analysis:** Increased demand velocity combined with lead time delays makes immediate replenishment necessary.")
-            response_text = "\n\n".join(lines)
-
-        elif "reorder" in p_lower or "recommendation" in p_lower or "replenish" in p_lower:
+        elif "reorder" in p_lower or "recommendation" in p_lower or "replenish" in p_lower or "buy" in p_lower:
             tools_used.append("get_inventory_recommendations")
             recs = tool_registry.execute_tool("get_inventory_recommendations", {})
-            
-            lines = ["Here are the automated replenishment recommendations generated by the optimization engine:"]
-            for r in recs[:5]:
-                lines.append(
-                    f"• **{r['product_name']}** ({r['warehouse']}):\n"
-                    f"  - Recommended Order: **{r['recommended_reorder_qty']} units**\n"
-                    f"  - Target Supplier: **{r['supplier']}** (Lead time: {r['lead_time_days']} days)\n"
-                    f"  - Action: `{r['action_required']}`"
-                )
-            response_text = "\n\n".join(lines)
+            if not recs:
+                response_text = "No purchase order recommendations currently required for the database."
+            else:
+                lines = ["Here are the automated replenishment recommendations generated by the optimization engine:"]
+                for r in recs[:5]:
+                    lines.append(
+                        f"• **{r.get('product_name', r.get('entity_id', 'SKU'))}**:\n"
+                        f"  - Recommended Order: **{r.get('recommended_action', 'Place PO')}**\n"
+                        f"  - Severity: `{r.get('severity', 'high').upper()}`\n"
+                        f"  - Reason: {r.get('reason', 'Stock threshold reached')}"
+                    )
+                response_text = "\n\n".join(lines)
 
         elif "forecast" in p_lower or "demand" in p_lower:
             tools_used.append("get_products")
@@ -150,11 +233,10 @@ class MockGenAIProvider(GenAIProvider):
                     f"• Horizon: **30 Days**\n"
                     f"• Total Forecasted Demand: **{fc['total_forecasted_demand']} units**\n"
                     f"• Model Accuracy (MAE): **{fc['mae']}** | RMSE: **{fc['rmse']}**\n"
-                    f"• Confidence Interval: **95%**\n"
-                    f"The trend indicates steady consumption with standard weekly cyclical peaks."
+                    f"• Confidence Interval: **95%**"
                 )
             else:
-                response_text = "No forecast data available."
+                response_text = "No product data available in connected database to generate demand forecast."
 
         else:
             tools_used.append("get_control_tower_summary")
@@ -162,20 +244,21 @@ class MockGenAIProvider(GenAIProvider):
             response_text = (
                 f"**Supply Chain Control Tower Overview**:\n"
                 f"• Total Products Managed: **{summary['total_products']}** across **{summary['total_warehouses']} Warehouses**\n"
-                f"• Total Inventory Valuation: **${summary['total_inventory_value']:,.2f}**\n"
+                f"• Total Inventory Valuation: **AED {summary['total_inventory_value']:,.2f}**\n"
                 f"• Stockout Alerts: **{summary['stockout_critical_count']} Critical**, **{summary['stockout_high_count']} High**\n"
                 f"• Excess Inventory SKUs: **{summary['excess_inventory_count']}**\n"
-                f"• Open Purchase Orders: **{summary['open_purchase_orders']}**\n\n"
-                f"You can ask me specific questions about stockout risks, demand forecasts, or reorder quantities."
+                f"• Open Purchase Orders: **{summary['open_purchase_orders']}**"
             )
 
         return {
             "response": response_text,
             "tools_used": tools_used,
-            "provider": "Local Deterministic Engine (Mock Fallback)"
+            "provider": "Wisualyst Real-Time Decision Engine"
         }
 
 def get_ai_provider() -> GenAIProvider:
-    if settings.ANTHROPIC_API_KEY and settings.AI_PROVIDER.lower() == "claude":
+    if settings.OPENAI_API_KEY and settings.AI_PROVIDER in ["openai", "gpt", "gpt4"]:
+        return OpenAIProvider(settings.OPENAI_API_KEY)
+    if settings.ANTHROPIC_API_KEY and settings.AI_PROVIDER in ["claude", "anthropic"]:
         return ClaudeProvider(settings.ANTHROPIC_API_KEY)
-    return MockGenAIProvider()
+    return DeterministicRuleBasedProvider()

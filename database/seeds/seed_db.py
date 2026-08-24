@@ -315,6 +315,20 @@ def seed_database(db: Session):
         po.total_cost = round(total_po_cost, 2)
         db.commit()
 
+    # 10. Retail Space Facing for Assortment AI
+    from backend.app.models.models import RetailSpace
+    for idx, p in enumerate(product_objs):
+        rs = RetailSpace(
+            store_id=f"STORE-DXB-{(idx % 5) + 1:02d}",
+            product_id=p.id,
+            category=p.category.name if p.category else "Retail",
+            allocated_space_sqm=round(random.uniform(0.5, 3.5), 1),
+            display_units=random.randint(10, 50),
+            shelf_capacity=random.randint(40, 100)
+        )
+        db.add(rs)
+    db.commit()
+
     print("Database seeding completed successfully!")
 
 if __name__ == "__main__":

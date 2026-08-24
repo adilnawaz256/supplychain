@@ -1,64 +1,78 @@
 import React from 'react';
-import { ShoppingBag, ArrowRight, Truck, CheckCircle } from 'lucide-react';
+import { ShoppingBag, ArrowRight, ShieldAlert, CheckCircle2, AlertTriangle, Lightbulb } from 'lucide-react';
 
 export default function RecommendationsPanel({ recommendations }) {
   return (
-    <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
-        <ShoppingBag size={20} color="var(--primary-violet)" />
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Smart Replenishment & Procurement Recommendations</h3>
+    <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
+            <Lightbulb size={20} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: '1.15rem', color: '#f8fafc', margin: 0 }}>Unified Cross-Module Recommendations</h3>
+            <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Standardized actionable insights across Inventory, Demand, Procurement, and Assortment</span>
+          </div>
+        </div>
+        <span className="badge badge-medium">{recommendations.length} Active Insights</span>
       </div>
 
       {recommendations.length === 0 ? (
-        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          <CheckCircle size={32} color="#10b981" style={{ marginBottom: '0.5rem' }} />
-          <div>All inventory items are currently at optimal levels. No replenishment action required.</div>
+        <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+          <CheckCircle2 size={36} color="#10b981" style={{ marginBottom: '8px' }} />
+          <div>All operations optimal. No open recommendations.</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
           {recommendations.map((rec, idx) => (
             <div 
-              key={idx} 
-              style={{ 
-                background: 'rgba(14, 21, 38, 0.8)', 
-                border: '1px solid var(--border-glass)', 
-                borderRadius: '12px', 
-                padding: '1.25rem',
+              key={idx}
+              style={{
+                background: 'rgba(15, 23, 42, 0.6)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '12px',
+                padding: '20px',
                 display: 'flex',
                 flexDirection: 'column',
-                justify: 'space-between'
+                justifyContent: 'space-between'
               }}
             >
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
-                  <div>
-                    <span className="badge badge-critical" style={{ fontSize: '0.65rem' }}>{rec.risk_level} RISK</span>
-                    <h4 style={{ fontSize: '1rem', fontWeight: 700, marginTop: '0.4rem' }}>{rec.product_name}</h4>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{rec.sku} — {rec.warehouse}</span>
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                  <span className={`badge ${
+                    rec.severity === 'critical' ? 'badge-critical' :
+                    rec.severity === 'high' ? 'badge-high' : 'badge-medium'
+                  }`}>
+                    {rec.module.toUpperCase()} — {rec.severity.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>
+                    +AED {(rec.financial_impact || 0).toLocaleString()} Impact
+                  </span>
                 </div>
-
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.8rem', lineHeight: '1.4' }}>
-                  Current Stock: <strong style={{ color: '#ffffff' }}>{rec.current_stock} units</strong> | Days of Supply: <strong style={{ color: 'var(--color-critical)' }}>{rec.days_of_inventory} days</strong>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginBottom: '6px' }}>
+                  {rec.title}
+                </h4>
+                <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '12px', lineHeight: '1.4' }}>
+                  {rec.summary}
+                </p>
+                <div style={{ fontSize: '0.78rem', color: '#cbd5e1', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '6px', marginBottom: '14px', borderLeft: '3px solid #6366f1' }}>
+                  <strong>Reason:</strong> {rec.reason}
                 </div>
               </div>
 
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Truck size={12} /> Supplier: {rec.supplier} ({rec.lead_time_days}d Lead Time)
-                  </div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary-cyan)', marginTop: '2px' }}>
-                    Order {rec.recommended_reorder_qty} units
-                  </div>
+              <div style={{ paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: '0.8rem', color: '#6ee7b7', fontWeight: 600, marginBottom: '4px' }}>
+                  Action: {rec.recommended_action}
                 </div>
-
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '12px' }}>
+                  Alt: {rec.alternative_action}
+                </div>
                 <button 
-                  onClick={() => alert(`Purchase Order draft initiated for ${rec.recommended_reorder_qty} units of ${rec.sku} with ${rec.supplier}.`)}
-                  className="btn-primary" 
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }}
+                  onClick={() => alert(`Action executed for ${rec.recommendation_id}: ${rec.recommended_action}`)}
+                  className="glow-btn-primary" 
+                  style={{ width: '100%', justifyContent: 'center', padding: '8px 14px', fontSize: '0.8rem' }}
                 >
-                  Create PO <ArrowRight size={12} />
+                  Execute Recommendation <ArrowRight size={14} />
                 </button>
               </div>
             </div>

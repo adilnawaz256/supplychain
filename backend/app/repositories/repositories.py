@@ -21,7 +21,7 @@ class WarehouseRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_all((self)) -> List[Warehouse]:
+    def get_all(self) -> List[Warehouse]:
         return self.db.query(Warehouse).all()
 
     def get_by_id(self, warehouse_id: int) -> Optional[Warehouse]:

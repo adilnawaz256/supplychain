@@ -31,12 +31,7 @@ def startup_event():
     db = SessionLocal()
     try:
         prod_count = db.query(Product).count()
-        if prod_count == 0:
-            print("Database empty. Auto-seeding initial supply chain data...")
-            seed_database(db)
-            print("Auto-seeding complete.")
-        else:
-            print(f"Database contains {prod_count} products.")
+        print(f"Database initialized. Contains {prod_count} products.")
     except Exception as e:
         print(f"Startup DB Check Note: {e}")
     finally:

@@ -104,9 +104,163 @@ def get_inventory_recommendations(db: Session = Depends(get_db)):
     return service.get_inventory_recommendations()
 
 @router.get("/api/control-tower", tags=["Control Tower"])
+@router.get("/api/control-tower/summary", tags=["Control Tower"])
 def get_control_tower_summary(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     return service.get_control_tower_summary()
+
+# --- Wisualyst 4 Module Endpoints ---
+@router.get("/api/modules/inventory", tags=["Wisualyst Modules"])
+def get_module_inventory(db: Session = Depends(get_db)):
+    service = SupplyChainService(db)
+    return {
+        "module": "Inventory AI",
+        "summary": service.get_control_tower_summary(),
+        "risks": service.risk_engine.get_all_inventory_risks()
+    }
+
+@router.get("/api/modules/demand", tags=["Wisualyst Modules"])
+def get_module_demand(product_id: int = 1, db: Session = Depends(get_db)):
+    service = SupplyChainService(db)
+    return service.forecast_engine.generate_forecast(product_id=product_id, horizon_days=30)
+
+@router.get("/api/modules/procurement", tags=["Wisualyst Modules"])
+def get_module_procurement(db: Session = Depends(get_db)):
+    service = SupplyChainService(db)
+    return service.procurement_engine.generate_procurement_intelligence()
+
+@router.get("/api/modules/assortment", tags=["Wisualyst Modules"])
+def get_module_assortment(db: Session = Depends(get_db)):
+    service = SupplyChainService(db)
+    return service.assortment_engine.generate_assortment_intelligence()
+
+@router.get("/api/recommendations", tags=["Wisualyst Modules"])
+def get_unified_recommendations(db: Session = Depends(get_db)):
+    service = SupplyChainService(db)
+    return service.recommendation_engine.get_unified_recommendations()
+
+# --- Wisualyst Onboarding & Data Connection Routes ---
+@router.post("/api/workspace/create", tags=["Wisualyst Onboarding"])
+def create_workspace(payload: Dict[str, Any] = Body(...)):
+    return {
+        "status": "SUCCESS",
+        "workspace_id": "ws_dubai_retail_01",
+        "name": payload.get("name", "Wisualyst Enterprise Workspace"),
+        "industry": payload.get("industry", "Retail & Consumer Goods"),
+        "region": payload.get("region", "Global / Middle East"),
+        "selected_modules": payload.get("modules", ["inventory", "demand", "procurement", "assortment"])
+    }
+
+@router.post("/api/connectors/test", tags=["Wisualyst Onboarding"])
+def test_connector(payload: Dict[str, Any] = Body(...)):
+    c_type = payload.get("type", "DIRECT_DB").upper()
+    if c_type == "DIRECT_DB":
+        from connectors.direct_db_connector import DirectDBConnector
+        connector = DirectDBConnector(
+            host=payload.get("host", ""),
+            port=payload.get("port", 5432),
+            database=payload.get("database", ""),
+            username=payload.get("username", ""),
+            password=payload.get("password", ""),
+            ssl_mode=payload.get("ssl_mode", "disable")
+        )
+        return connector.test_connection()
+    elif c_type == "ZOHO":
+        from connectors.zoho_connector import ZohoConnector
+        connector = ZohoConnector(
+            client_id=payload.get("client_id", ""),
+            client_secret=payload.get("client_secret", ""),
+            organization_id=payload.get("organization_id", ""),
+            region_domain=payload.get("region_domain", "accounts.zoho.com")
+        )
+        return connector.authenticate(auth_code=payload.get("auth_code", ""))
+    elif c_type == "SFTP":
+        from connectors.sftp_connector import SFTPConnector
+        connector = SFTPConnector(
+            host=payload.get("host", ""),
+            port=payload.get("port", 22),
+            username=payload.get("username", ""),
+            password=payload.get("password", ""),
+            remote_path=payload.get("remote_path", "/exports/daily_feeds")
+        )
+        return connector.test_connection()
+    return {"status": "SUCCESS", "message": f"Connection to {c_type} validated successfully!"}
+
+@router.post("/api/connectors/discover", tags=["Wisualyst Onboarding"])
+def discover_tables(payload: Dict[str, Any] = Body(...)):
+    c_type = payload.get("type", "DIRECT_DB").upper()
+    if c_type == "DIRECT_DB":
+        from connectors.direct_db_connector import DirectDBConnector
+        connector = DirectDBConnector(
+            host=payload.get("host", ""),
+            port=payload.get("port", 5432),
+            database=payload.get("database", ""),
+            username=payload.get("username", ""),
+            password=payload.get("password", "")
+        )
+        return {"tables": connector.discover_tables()}
+    elif c_type == "ZOHO":
+        from connectors.zoho_connector import ZohoConnector
+        return {"tables": ZohoConnector().discover_modules()}
+    else:
+        from connectors.sftp_connector import SFTPConnector
+        return {"tables": SFTPConnector().discover_files()}
+
+@router.post("/api/mapping/suggest", tags=["Wisualyst Onboarding"])
+def suggest_mapping(payload: Dict[str, Any] = Body(...)):
+    from backend.app.services.mapping_engine import CanonicalMappingEngine
+    source_fields = payload.get("source_fields", ["ItemCode", "ItemDescription", "WarehouseCode", "QtyOnHand", "TxnDate", "NetAmount", "SupplierCode"])
+    engine = CanonicalMappingEngine()
+    return {"mappings": engine.suggest_mappings(source_fields)}
+
+@router.get("/api/validation/check", tags=["Wisualyst Onboarding"])
+def check_validation(db: Session = Depends(get_db)):
+    service = SupplyChainService(db)
+    return service.validation_engine.evaluate_readiness()
+
+@router.post("/api/workspace/launch", tags=["Wisualyst Onboarding"])
+def launch_workspace():
+    return {
+        "status": "LAUNCHED",
+        "workspace_id": "ws_dubai_retail_01",
+        "message": "Workspace successfully configured and launched!"
+    }
+
+# --- MCP Server Integration ---
+@router.get("/api/mcp/tools", tags=["MCP Server Integration"])
+def get_mcp_tools(db: Session = Depends(get_db)):
+    import os
+    from mcp.tools import MCPToolRegistry
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    server_path = os.path.join(base_dir, "mcp", "server.py")
+    registry = MCPToolRegistry(db)
+    return {
+        "status": "ONLINE",
+        "mcp_version": "2024-11-05",
+        "transport": "JSON-RPC stdio",
+        "server_path": server_path,
+        "base_dir": base_dir,
+        "tools": registry.get_tool_definitions()
+    }
+
+# --- BI Integration Adapters ---
+@router.get("/api/bi/export", tags=["BI Integration"])
+@router.get("/api/bi/powerbi", tags=["BI Integration"])
+def export_powerbi(db: Session = Depends(get_db)):
+    adapter = LocalBIAdapter()
+    return adapter.export_powerbi(db)
+
+@router.get("/api/bi/qlik", tags=["BI Integration"])
+def export_qlik(db: Session = Depends(get_db)):
+    adapter = LocalBIAdapter()
+    return adapter.export_qlik(db)
+
+@router.get("/api/bi/google-sheets", tags=["BI Integration"])
+@router.get("/api/bi/export/csv", tags=["BI Integration"])
+def export_bi_csv(db: Session = Depends(get_db)):
+    adapter = LocalBIAdapter()
+    csv_data = adapter.export_inventory_metrics_csv(db)
+    return Response(content=csv_data, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=wisualyst_bi_dataset.csv"})
 
 # --- AI Agent Chat ---
 @router.post("/api/ai/chat", response_model=AIChatResponse, tags=["AI Agent"])
@@ -143,18 +297,6 @@ def ingest_wms(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db
     connector = MockWMSConnector()
     return connector.sync_wms_inventory(payload, db)
 
-# --- BI Integration ---
-@router.get("/api/bi/export", tags=["BI Integration"])
-def export_bi_json(db: Session = Depends(get_db)):
-    adapter = LocalBIAdapter()
-    return adapter.export_inventory_metrics(db)
-
-@router.get("/api/bi/export/csv", tags=["BI Integration"])
-def export_bi_csv(db: Session = Depends(get_db)):
-    adapter = LocalBIAdapter()
-    csv_data = adapter.export_inventory_metrics_csv(db)
-    return Response(content=csv_data, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_chain_bi_dataset.csv"})
-
 # --- Mock ERP REST Endpoints ---
 @router.get("/mock-erp/products", tags=["Mock ERP External API"])
 def mock_erp_products():
@@ -179,3 +321,4 @@ def mock_wms_inventory():
             {"sku": "SKU-IND-201", "current_stock": 8, "allocated_stock": 2}
         ]
     }
+

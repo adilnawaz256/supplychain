@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from backend.app.models.models import SalesHistory, Product, Warehouse
 
@@ -9,7 +9,7 @@ class StatisticalForecastEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    def generate_forecast(self, product_id: int, warehouse_id: Optional_int = None, horizon_days: int = 30) -> Dict[str, Any]:
+    def generate_forecast(self, product_id: int, warehouse_id: Optional[int] = None, horizon_days: int = 30) -> Dict[str, Any]:
         # Query sales history
         query = self.db.query(SalesHistory).filter(SalesHistory.product_id == product_id)
         if warehouse_id:
@@ -133,5 +133,3 @@ class StatisticalForecastEngine:
             "forecast_data": forecast_points
         }
 
-# Optional_int type helper
-from typing import Optional as Optional_int

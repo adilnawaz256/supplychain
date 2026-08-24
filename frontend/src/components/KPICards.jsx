@@ -1,86 +1,71 @@
 import React from 'react';
-import { Package, AlertTriangle, ShoppingCart, DollarSign, TrendingUp, Warehouse } from 'lucide-react';
+import { DollarSign, ShieldAlert, TrendingUp, Award, ShoppingBag } from 'lucide-react';
 
-export default function KPICards({ summary }) {
-  if (!summary) return null;
+export default function KPICards({ summaryData }) {
+  const cards = [
+    {
+      title: 'Total Inventory Value',
+      value: `AED ${(summaryData?.total_inventory_value || 0).toLocaleString()}`,
+      change: 'Canonical DB Total',
+      isPositive: true,
+      icon: DollarSign,
+      color: '#6366f1'
+    },
+    {
+      title: 'Stockout Critical Risks',
+      value: (summaryData?.stockout_critical_count || 0).toString(),
+      change: summaryData?.stockout_critical_count > 0 ? 'Requires PO action' : 'Optimal levels',
+      isPositive: (summaryData?.stockout_critical_count || 0) === 0,
+      icon: ShieldAlert,
+      color: '#f43f5e'
+    },
+    {
+      title: 'Potential PO Savings (EOQ)',
+      value: `AED ${(summaryData?.potential_savings || 0).toLocaleString()}`,
+      change: 'EOQ optimization',
+      isPositive: true,
+      icon: TrendingUp,
+      color: '#10b981'
+    },
+    {
+      title: 'Avg Supplier OTIF Score',
+      value: `${summaryData?.avg_supplier_otif || 0}%`,
+      change: 'On-Time In-Full',
+      isPositive: (summaryData?.avg_supplier_otif || 0) >= 90,
+      icon: Award,
+      color: '#06b6d4'
+    },
+    {
+      title: 'Store Shelf Space GMROI',
+      value: `${summaryData?.avg_store_gmroi || 0}x`,
+      change: 'Gross Margin Return',
+      isPositive: (summaryData?.avg_store_gmroi || 0) >= 1.5,
+      icon: ShoppingBag,
+      color: '#8b5cf6'
+    }
+  ];
 
   return (
-    <div className="kpi-grid">
-      <div className="glass-panel kpi-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Inventory Value
-            </span>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.3rem 0', fontFamily: 'var(--font-mono)' }}>
-              ${summary.total_inventory_value?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              {summary.total_inventory_items} Active SKU Locations across {summary.total_warehouses} Hubs
-            </p>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {cards.map((c, i) => {
+        const IconComp = c.icon;
+        return (
+          <div key={i} className="glass-panel glass-panel-hover" style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+              <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>{c.title}</span>
+              <div style={{ padding: '8px', borderRadius: '10px', background: `${c.color}20`, color: c.color }}>
+                <IconComp size={18} />
+              </div>
+            </div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc', marginBottom: '4px', letterSpacing: '-0.5px' }}>
+              {c.value}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: c.isPositive ? '#6ee7b7' : '#fda4af', fontWeight: 500 }}>
+              {c.change}
+            </div>
           </div>
-          <div style={{ padding: '0.6rem', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary-indigo)' }}>
-            <DollarSign size={22} />
-          </div>
-        </div>
-      </div>
-
-      <div className="glass-panel kpi-card critical">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-critical)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Stockout Risk Alerts
-            </span>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.3rem 0', color: 'var(--color-critical)', fontFamily: 'var(--font-mono)' }}>
-              {summary.stockout_critical_count} Critical / {summary.stockout_high_count} High
-            </h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              SKUs below Safety Stock & Lead Time window
-            </p>
-          </div>
-          <div style={{ padding: '0.6rem', borderRadius: '12px', background: 'rgba(244, 63, 94, 0.15)', color: 'var(--color-critical)' }}>
-            <AlertTriangle size={22} />
-          </div>
-        </div>
-      </div>
-
-      <div className="glass-panel kpi-card high">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-high)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Open Replenishment POs
-            </span>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.3rem 0', fontFamily: 'var(--font-mono)' }}>
-              {summary.open_purchase_orders} Pending POs
-            </h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              {summary.excess_inventory_count} SKUs identified with Excess Stock
-            </p>
-          </div>
-          <div style={{ padding: '0.6rem', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.15)', color: 'var(--color-high)' }}>
-            <ShoppingCart size={22} />
-          </div>
-        </div>
-      </div>
-
-      <div className="glass-panel kpi-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              30-Day Sales Demand
-            </span>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.3rem 0', fontFamily: 'var(--font-mono)' }}>
-              ${summary.recent_sales_30d_revenue?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </h2>
-            <p style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              <TrendingUp size={12} /> Active historical velocity tracking
-            </p>
-          </div>
-          <div style={{ padding: '0.6rem', borderRadius: '12px', background: 'rgba(6, 182, 212, 0.15)', color: 'var(--primary-cyan)' }}>
-            <TrendingUp size={22} />
-          </div>
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
