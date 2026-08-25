@@ -15,9 +15,43 @@ def setup_certbot_ssl(ip: str, domain: str, email: str = "admin@wisualyst.com"):
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(ip, username='ubuntu', key_filename=key_file, timeout=15)
 
+    nginx_conf = f"""server {{
+    listen 80;
+    listen 443 ssl;
+    server_name {domain};
+    client_max_body_size 50M;
+
+    ssl_certificate /etc/letsencrypt/live/{domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{domain}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {{
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }}
+}}
+"""
+    sftp = ssh.open_sftp()
+    with sftp.file('/tmp/wisualyst_nginx.conf', 'w') as f:
+        f.write(nginx_conf)
+    sftp.close()
+
     commands = [
-        "sudo apt update && sudo apt install -y certbot python3-certbot-nginx",
-        f"sudo certbot --nginx -d {domain} --non-interactive --agree-tos -m {email} --redirect || true"
+        "sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx",
+        f"sudo certbot certonly --standalone -d {domain} --non-interactive --agree-tos -m {email} --expand || sudo certbot certonly --webroot -w /var/www/html -d {domain} --non-interactive --agree-tos -m {email} --expand || true",
+        "sudo mv /tmp/wisualyst_nginx.conf /etc/nginx/sites-available/wisualyst",
+        "sudo ln -sf /etc/nginx/sites-available/wisualyst /etc/nginx/sites-enabled/wisualyst",
+        "sudo rm -f /etc/nginx/sites-enabled/default",
+        "sudo nginx -t",
+        "sudo systemctl restart nginx"
     ]
 
     for cmd in commands:
@@ -27,7 +61,7 @@ def setup_certbot_ssl(ip: str, domain: str, email: str = "admin@wisualyst.com"):
         print(stderr.read().decode())
 
     ssh.close()
-    print(f"🎉 Free Let's Encrypt SSL Certificate successfully generated for https://{domain} !")
+    print(f"🎉 Free Let's Encrypt SSL Certificate successfully generated and configured for https://{domain} !")
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2:
