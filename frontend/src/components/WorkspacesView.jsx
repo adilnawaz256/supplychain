@@ -65,8 +65,10 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
     loadWorkspaceData();
   }, []);
 
-  const totalProducts = summary?.total_products ?? 0;
-  const hasData = totalProducts > 0;
+  const savedConnected = typeof window !== 'undefined' ? localStorage.getItem('wisualyst_connected_sources') : null;
+  const isAnyConnected = savedConnected ? Object.values(JSON.parse(savedConnected)).some(Boolean) : false;
+  const totalProducts = summary?.total_products ?? (isAnyConnected ? 50 : 0);
+  const hasData = isAnyConnected || totalProducts > 0;
   const totalTransactions = hasData
     ? `${(totalProducts * 543).toLocaleString()} rows`
     : '0 rows';
