@@ -159,10 +159,14 @@ export default function App() {
     }
   };
 
-  // If user is not authenticated, show Signup / Create Workspace screen first!
+  // If user is not authenticated, redirect root access to #login and show Login screen!
   if (!user) {
     const currentHash = window.location.hash.replace('#', '').toLowerCase();
-    const mode = (currentHash === 'login' || currentHash === 'signin') ? 'login' : 'signup';
+    const mode = (currentHash === 'signup' || currentHash === 'register') ? 'signup' : 'login';
+
+    if (!window.location.hash || window.location.hash === '#') {
+      window.location.hash = '#login';
+    }
 
     return (
       <AuthView

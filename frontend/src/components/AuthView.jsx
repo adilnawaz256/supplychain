@@ -31,21 +31,7 @@ export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'l
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [summary, setSummary] = useState(null);
-
-  useEffect(() => {
-    async function loadPreview() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/control-tower/summary`);
-        if (res.ok) {
-          setSummary(await res.json());
-        }
-      } catch (err) {
-        console.error('Preview metrics note:', err);
-      }
-    }
-    loadPreview();
-  }, []);
+  // Auth form state
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -373,7 +359,7 @@ export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'l
               justifyContent: 'space-between',
               fontSize: '0.75rem'
             }}>
-              <span style={{ color: '#334155', fontWeight: 600 }}>Active SKUs: {summary?.total_products || 50} catalog items</span>
+              <span style={{ color: '#334155', fontWeight: 600 }}>Enterprise Decision Intelligence</span>
               <span style={{ color: '#059669', fontWeight: 700 }}>✓ Live DB Synced</span>
             </div>
           </div>
@@ -624,26 +610,6 @@ export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'l
               }}
             >
               {isSignUp ? 'Already have an account? Sign in →' : "Don't have an account? Create workspace →"}
-            </button>
-          </div>
-
-          {/* Quick Demo Bypass Button for Instant Exploration */}
-          <div style={{ marginTop: '16px', textAlign: 'center' }}>
-            <button
-              type="button"
-              onClick={handleDemoAccess}
-              style={{
-                background: '#f8fafc',
-                border: '1px dashed #cbd5e1',
-                borderRadius: '8px',
-                padding: '6px 14px',
-                color: '#64748b',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              🚀 Or Explore Live Demo (Instant Access)
             </button>
           </div>
         </div>
