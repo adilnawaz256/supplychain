@@ -1,226 +1,303 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from './components/Navbar';
-import KPICards from './components/KPICards';
-import RiskMatrixTable from './components/RiskMatrixTable';
-import ForecastChart from './components/ForecastChart';
-import RecommendationsPanel from './components/RecommendationsPanel';
-import ProcurementModule from './components/ProcurementModule';
-import AssortmentModule from './components/AssortmentModule';
-import BIIntegrationsPanel from './components/BIIntegrationsPanel';
+import Sidebar from './components/Sidebar';
+import HeaderBar from './components/HeaderBar';
+import AuthView from './components/AuthView';
+import OverviewView from './components/OverviewView';
+import WorkspacesView from './components/WorkspacesView';
+import DataSourcesView from './components/DataSourcesView';
+import AlertsView from './components/AlertsView';
+import AccessControlView from './components/AccessControlView';
+import IntelligenceEnginesView from './components/IntelligenceEnginesView';
+import RecommendationsView from './components/RecommendationsView';
+import DashboardView from './components/DashboardView';
 import AIAssistantDrawer from './components/AIAssistantDrawer';
-import OnboardingWizard from './components/OnboardingWizard';
-import { API_BASE_URL } from './config/api';
-import { 
-  LayoutDashboard, Box, TrendingUp, ShoppingCart, ShoppingBag, 
-  Lightbulb, Database, Plug, Settings, Sparkles, ChevronRight, Layers
-} from 'lucide-react';
+import {
+  NewRoleModal,
+  InviteMemberModal,
+  RecommendationSimulationModal,
+  HelpModal
+} from './components/Modals';
+import { getSessionUser, signOutUser } from './config/supabase';
 
 export default function App() {
-  const [isOnboarding, setIsOnboarding] = useState(false);
-  const [activeTab, setActiveTab] = useState('control-tower'); // control-tower, inventory, demand, procurement, assortment, recommendations, integrations, onboarding
-  const [summary, setSummary] = useState(null);
-  const [risks, setRisks] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
-  const [recommendations, setRecommendations] = useState([]);
-  const [selectedProductId, setSelectedProductId] = useState(null);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // Session / User state - defaults to null until authenticated or session restored
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [dateRange, setDateRange] = useState('May 12 – May 18, 2024');
 
-  const fetchDashboardData = async () => {
-    try {
-      const [sumRes, riskRes, prodRes, whRes, recRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/control-tower/summary`),
-        fetch(`${API_BASE_URL}/api/inventory-risk`),
-        fetch(`${API_BASE_URL}/api/products`),
-        fetch(`${API_BASE_URL}/api/warehouses`),
-        fetch(`${API_BASE_URL}/api/recommendations`)
-      ]);
+  // Modal & Drawer states
+  const [isNewRoleModalOpen, setIsNewRoleModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [simulationRec, setSimulationRec] = useState(null);
 
-      if (sumRes.ok) setSummary(await sumRes.json());
-      if (riskRes.ok) setRisks(await riskRes.json());
-      if (prodRes.ok) {
-        const prods = await prodRes.json();
-        setProducts(prods);
-        if (prods.length > 0 && !selectedProductId) {
-          setSelectedProductId(prods[0].id);
-        }
-      }
-      if (whRes.ok) setWarehouses(await whRes.json());
-      if (recRes.ok) setRecommendations(await recRes.json());
-    } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Check Supabase session on startup
   useEffect(() => {
-    fetchDashboardData();
+    async function checkAuth() {
+      try {
+        const sessUser = await getSessionUser();
+        if (sessUser) {
+          setUser(sessUser);
+        }
+      } catch (err) {
+        console.error('Session check note:', err);
+      } finally {
+        setAuthChecked(true);
+      }
+    }
+    checkAuth();
   }, []);
 
-  const handleStartOnboarding = () => {
-    setActiveTab('onboarding');
-    setIsOnboarding(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleSignOut = async () => {
+    await signOutUser();
+    setUser(null);
   };
 
-  const navItems = [
-    { id: 'control-tower', label: 'Control Tower', icon: LayoutDashboard },
-    { id: 'inventory', label: 'Inventory AI', icon: Box },
-    { id: 'demand', label: 'Demand AI', icon: TrendingUp },
-    { id: 'procurement', label: 'Procurement AI', icon: ShoppingCart },
-    { id: 'assortment', label: 'Assortment AI', icon: ShoppingBag },
-    { id: 'recommendations', label: 'Recommendations', icon: Lightbulb },
-    { id: 'integrations', label: 'BI Integrations', icon: Plug },
-    { id: 'onboarding', label: 'Data & Onboarding', icon: Database }
-  ];
+  const handleAuthSuccess = (authedUser) => {
+    setUser(authedUser);
+  };
 
-  const handleTabChange = (tabId) => {
-    setActiveTab(tabId);
-    if (tabId === 'onboarding') {
-      setIsOnboarding(true);
-    } else {
-      setIsOnboarding(false);
+  const getHeaderProps = () => {
+    switch (activeTab) {
+      case 'overview':
+        return {
+          title: (
+            <span>
+              Wisualyst <span style={{ color: '#2563eb' }}>Supply Chain Intelligence</span>
+            </span>
+          ),
+          subtitle: 'AI-powered insights to optimize performance across your network.',
+          showFilters: true
+        };
+      case 'workspaces':
+        return {
+          title: 'Onboard Your Workspace',
+          subtitle: 'Complete these steps to set up your workspace and unlock intelligent insights.',
+          showFilters: true
+        };
+      case 'datasources':
+        return {
+          title: 'Connect & Standardize Your Data',
+          subtitle: 'Unify and prepare your data for accurate insights and intelligent decisions.',
+          showFilters: false
+        };
+      case 'intelligence':
+        return {
+          title: 'Intelligence Engines',
+          subtitle: 'Autonomous forecasting, multi-echelon inventory, and procurement optimization models.',
+          showFilters: true
+        };
+      case 'recommendations':
+        return {
+          title: 'AI Recommendations & Actions',
+          subtitle: 'Proactive prescriptive interventions with financial ROI modeling.',
+          showFilters: true
+        };
+      case 'alerts':
+        return {
+          title: (
+            <span>
+              Connect <span style={{ color: '#2563eb' }}>Microsoft Teams</span> for Alerts & Recommendations
+            </span>
+          ),
+          subtitle: 'Send real-time alerts and AI-powered recommendations to your Teams channels.',
+          showFilters: false
+        };
+      case 'dashboard':
+        return {
+          title: 'Executive Control Tower',
+          subtitle: 'Holistic network telemetry across global hubs, suppliers, and fulfillment nodes.',
+          showFilters: true
+        };
+      case 'access-control':
+        return {
+          title: 'Access Control',
+          subtitle: 'Manage roles, permissions, and user access across Wisualyst.',
+          showFilters: false
+        };
+      default:
+        return {
+          title: 'Wisualyst Intelligence Platform',
+          subtitle: 'Supply Chain Decision Intelligence',
+          showFilters: true
+        };
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // If user is not authenticated, show Signup / Create Workspace screen first!
+  if (!user) {
+    return (
+      <AuthView
+        onAuthSuccess={handleAuthSuccess}
+        onBypassDemo={() => {
+          setUser({
+            id: 'demo-user',
+            email: 'avery.johnson@gscc.com',
+            user_metadata: {
+              full_name: 'Avery Johnson',
+              company_name: 'Global Supply Chain Co.',
+              role: 'Admin'
+            }
+          });
+        }}
+      />
+    );
+  }
+
+  const headerProps = getHeaderProps();
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Navbar 
-        onOpenChat={() => setIsChatOpen(true)} 
-        onRelaunchOnboarding={handleStartOnboarding}
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+      
+      {/* Left Navigation Sidebar */}
+      <Sidebar
         activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        user={user}
+        onSignOut={handleSignOut}
+        onOpenAuth={() => setUser(null)}
       />
 
-      <div style={{ flex: 1, display: 'flex', maxWidth: '1440px', width: '100%', margin: '0 auto', padding: '24px 20px' }}>
+      {/* Main Content Area */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         
-        {/* Left Sidebar Navigation */}
-        <aside style={{ width: '240px', flexShrink: 0, paddingRight: '24px' }}>
-          <div className="glass-panel" style={{ padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, padding: '8px 12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              Intelligence Modules
-            </div>
-            {navItems.map(item => {
-              const IconComp = item.icon;
-              const isActive = (activeTab === item.id) || (item.id === 'onboarding' && isOnboarding);
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleTabChange(item.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '12px 14px', borderRadius: '10px', width: '100%',
-                    background: isActive ? 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.25))' : 'transparent',
-                    border: isActive ? '1px solid rgba(99,102,241,0.4)' : '1px solid transparent',
-                    color: isActive ? '#f8fafc' : '#94a3b8',
-                    fontWeight: isActive ? 600 : 500, fontSize: '0.88rem',
-                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease'
-                  }}
-                >
-                  <IconComp size={18} color={isActive ? '#818cf8' : '#64748b'} />
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  {isActive && <ChevronRight size={14} color="#818cf8" />}
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+        {/* Top Header Bar */}
+        <HeaderBar
+          title={headerProps.title}
+          subtitle={headerProps.subtitle}
+          dateRange={dateRange}
+          onDateChange={setDateRange}
+          showFilters={headerProps.showFilters}
+          onFilterClick={() => alert('Filters: Filtering data for ' + dateRange)}
+          onOpenHelp={() => setIsHelpModalOpen(true)}
+        />
 
-        {/* Main Content Area */}
-        <main style={{ flex: 1, minWidth: 0 }}>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '80px', color: '#94a3b8' }}>
-              Loading Wisualyst Decision Intelligence...
-            </div>
-          ) : (
-            <>
-              {/* Show empty state banner only when NOT in onboarding tab */}
-              {products.length === 0 && activeTab !== 'onboarding' && !isOnboarding && (
-                <div style={{
-                  padding: '24px 32px', borderRadius: '16px', marginBottom: '24px',
-                  background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.1rem', color: '#f8fafc', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Database size={20} color="#818cf8" /> No Connected Data Source
-                    </h3>
-                    <p style={{ color: '#94a3b8', margin: 0, fontSize: '0.85rem' }}>
-                      Your database is clean. Launch the Onboarding Wizard to connect your PostgreSQL, Zoho, or SFTP feeds.
-                    </p>
-                  </div>
-                  <button onClick={handleStartOnboarding} className="glow-btn-primary" style={{ padding: '10px 20px', whiteSpace: 'nowrap' }}>
-                    Connect Data Source
-                  </button>
-                </div>
-              )}
+        {/* Dynamic Main Body View */}
+        <main style={{ flex: 1, position: 'relative', zIndex: 10 }}>
+          {activeTab === 'overview' && (
+            <OverviewView
+              onNavigate={(tab) => setActiveTab(tab)}
+              onOpenRecommendationModal={(rec) => setSimulationRec(rec)}
+            />
+          )}
 
-              {activeTab === 'control-tower' && !isOnboarding && (
-                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <KPICards summaryData={summary} />
-                  <RiskMatrixTable 
-                    risks={risks} 
-                    warehouses={warehouses} 
-                    onSelectProduct={(id) => setSelectedProductId(id)}
-                  />
-                  <ForecastChart 
-                    products={products} 
-                    selectedProductId={selectedProductId}
-                    onSelectProduct={(id) => setSelectedProductId(id)}
-                  />
-                  <RecommendationsPanel recommendations={recommendations} />
-                </div>
-              )}
+          {activeTab === 'workspaces' && (
+            <WorkspacesView
+              onNavigate={(tab) => setActiveTab(tab)}
+              onOpenInviteModal={() => setIsInviteModalOpen(true)}
+            />
+          )}
 
-              {activeTab === 'inventory' && !isOnboarding && (
-                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <KPICards summaryData={summary} />
-                  <RiskMatrixTable 
-                    risks={risks} 
-                    warehouses={warehouses} 
-                    onSelectProduct={(id) => setSelectedProductId(id)}
-                  />
-                </div>
-              )}
+          {activeTab === 'datasources' && (
+            <DataSourcesView
+              onNavigate={(tab) => setActiveTab(tab)}
+            />
+          )}
 
-              {activeTab === 'demand' && !isOnboarding && (
-                <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <ForecastChart 
-                    products={products} 
-                    selectedProductId={selectedProductId}
-                    onSelectProduct={(id) => setSelectedProductId(id)}
-                  />
-                </div>
-              )}
+          {activeTab === 'intelligence' && (
+            <IntelligenceEnginesView />
+          )}
 
-              {activeTab === 'procurement' && !isOnboarding && <ProcurementModule />}
+          {activeTab === 'recommendations' && (
+            <RecommendationsView
+              onOpenSimulationModal={(rec) => setSimulationRec(rec)}
+            />
+          )}
 
-              {activeTab === 'assortment' && !isOnboarding && <AssortmentModule />}
+          {activeTab === 'alerts' && (
+            <AlertsView />
+          )}
 
-              {activeTab === 'recommendations' && !isOnboarding && (
-                <div className="animate-fade-in">
-                  <RecommendationsPanel recommendations={recommendations} />
-                </div>
-              )}
+          {activeTab === 'dashboard' && (
+            <DashboardView
+              onNavigate={(tab) => setActiveTab(tab)}
+            />
+          )}
 
-              {activeTab === 'integrations' && !isOnboarding && <BIIntegrationsPanel />}
-
-              {(activeTab === 'onboarding' || isOnboarding) && (
-                <div className="animate-fade-in" style={{ marginTop: 0 }}>
-                  <OnboardingWizard onComplete={() => { setIsOnboarding(false); setActiveTab('control-tower'); fetchDashboardData(); }} />
-                </div>
-              )}
-            </>
+          {activeTab === 'access-control' && (
+            <AccessControlView
+              onOpenNewRoleModal={() => setIsNewRoleModalOpen(true)}
+            />
           )}
         </main>
+
       </div>
 
-      <AIAssistantDrawer 
-        isOpen={isChatOpen} 
-        onClose={() => setIsChatOpen(false)} 
+      {/* Global Modals */}
+      <NewRoleModal
+        isOpen={isNewRoleModalOpen}
+        onClose={() => setIsNewRoleModalOpen(false)}
+        onSave={(newRole) => {
+          alert(`Role "${newRole.name}" created successfully!`);
+        }}
       />
+
+      <InviteMemberModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        onInvite={(invite) => {
+          alert(`Invitation sent to ${invite.email} as ${invite.role}!`);
+        }}
+      />
+
+      <RecommendationSimulationModal
+        isOpen={Boolean(simulationRec)}
+        recommendation={simulationRec}
+        onClose={() => setSimulationRec(null)}
+      />
+
+      <HelpModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
+      />
+
+      {/* Floating Ask Wisualyst AI Launcher Button */}
+      <button
+        onClick={() => setIsAIChatOpen(true)}
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '28px',
+          padding: '12px 20px',
+          borderRadius: '999px',
+          background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
+          color: '#ffffff',
+          border: 'none',
+          boxShadow: '0 8px 24px rgba(37, 99, 235, 0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '0.88rem',
+          fontWeight: 700,
+          cursor: 'pointer',
+          zIndex: 100,
+          transition: 'all 0.2s ease',
+          fontFamily: 'var(--font-main)'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px) scale(1.03)';
+          e.currentTarget.style.boxShadow = '0 12px 28px rgba(37, 99, 235, 0.45)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0) scale(1)';
+          e.currentTarget.style.boxShadow = '0 8px 24px rgba(37, 99, 235, 0.35)';
+        }}
+      >
+        <span style={{ fontSize: '1.1rem' }}>✨</span>
+        <span>Ask Wisualyst AI</span>
+      </button>
+
+      {/* Step 10: Live AI Assistant Drawer */}
+      <AIAssistantDrawer
+        isOpen={isAIChatOpen}
+        onClose={() => setIsAIChatOpen(false)}
+      />
+
     </div>
   );
 }

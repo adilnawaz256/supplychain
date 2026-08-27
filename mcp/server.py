@@ -2,15 +2,28 @@
 import sys
 import json
 import logging
+import argparse
 from typing import Dict, Any
+import numpy as np
 from backend.app.core.database import SessionLocal
 from mcp.tools import MCPToolRegistry
 
 # Configure stderr logging so stdin/stdout remain clean for JSON-RPC JSON lines
 logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s - %(levelname)s - %(message)s")
 
+def json_default(obj):
+    if isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return str(obj)
+
 def send_response(response: Dict[str, Any]):
-    sys.stdout.write(json.dumps(response) + "\n")
+    sys.stdout.write(json.dumps(response, default=json_default) + "\n")
     sys.stdout.flush()
 
 def main():
@@ -87,7 +100,7 @@ def main():
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": json.dumps(res, indent=2, default=str)
+                                    "text": json.dumps(res, indent=2, default=json_default)
                                 }
                             ]
                         }
@@ -120,4 +133,28 @@ def main():
         db.close()
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Wisualyst Supply Chain MCP Server")
+    parser.add_argument("--test", action="store_true", help="Run a self-test of all registered MCP tools")
+    parser.add_argument("--list-tools", action="store_true", help="Print all available MCP tools")
+    args = parser.parse_args()
+
+    if args.test:
+        print("=== Wisualyst MCP Server Self-Test ===")
+        db = SessionLocal()
+        reg = MCPToolRegistry(db)
+        tools = reg.get_tool_definitions()
+        print(f"Registered Tools Count: {len(tools)}")
+        for t in tools:
+            print(f"  • {t['name']}: {t['description']}")
+        print("\nTesting 'get_control_tower_summary':")
+        summary = reg.execute_tool('get_control_tower_summary', {})
+        print(f"  -> Total Products: {summary.get('total_products')}, Stockout Critical: {summary.get('stockout_critical_count')}, Readiness: {summary.get('overall_readiness_pct')}%")
+        db.close()
+        print("=== MCP Server Self-Test PASSED ===")
+    elif args.list_tools:
+        db = SessionLocal()
+        reg = MCPToolRegistry(db)
+        print(json.dumps(reg.get_tool_definitions(), indent=2))
+        db.close()
+    else:
+        main()

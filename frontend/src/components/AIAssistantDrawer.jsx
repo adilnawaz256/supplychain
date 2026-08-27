@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, User, Cpu, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Send, Bot, User, Cpu, Sparkles, AlertCircle, MessageSquare } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 export default function AIAssistantDrawer({ isOpen, onClose }) {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hello! I am your Supply Chain AI Assistant powered by Claude and MCP Tools.\n\nYou can ask me questions like:\n• *'Which products are at risk of stockout in the next 7 days?'*\n• *'Why is SKU-ELEC-101 at risk?'*\n• *'What should we reorder for Bangalore warehouse?'*",
+      text: "Hello! I am your Wisualyst AI Decision Assistant powered by ReAct & MCP Tools.\n\nYou can ask me questions like:\n• *'Which products are at risk of stockout in the next 7 days?'*\n• *'Why is SKU-ELEC-101 at risk?'*\n• *'What should we reorder for Bangalore warehouse?'*",
       tools_used: [],
-      reasoning: "System initialized with read-only database MCP tools."
+      reasoning: "System initialized with live database MCP tools."
     }
   ]);
   const [input, setInput] = useState('');
@@ -30,7 +31,7 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/ai/chat', {
+      const res = await fetch(`${API_BASE_URL}/api/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: query })
@@ -53,7 +54,7 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
     } catch (err) {
       setMessages(prev => [...prev, {
         sender: 'bot',
-        text: "Error communicating with AI service."
+        text: "Error communicating with AI service. Please check network connection."
       }]);
     } finally {
       setLoading(false);
@@ -71,58 +72,131 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
       position: 'fixed',
       top: 0,
       right: 0,
-      width: '440px',
+      width: '420px',
       height: '100vh',
-      background: 'rgba(14, 21, 38, 0.95)',
-      backdropFilter: 'blur(20px)',
-      borderLeft: '1px solid var(--border-glass-accent)',
+      backgroundColor: '#ffffff',
+      borderLeft: '1px solid #e2e8f0',
       zIndex: 1000,
       display: 'flex',
       flexDirection: 'column',
-      boxShadow: '-10px 0 30px rgba(0,0,0,0.5)'
+      boxShadow: '-10px 0 35px rgba(15, 23, 42, 0.12)'
     }}>
       {/* Drawer Header */}
-      <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <Bot size={22} color="var(--primary-cyan)" />
+      <div style={{
+        padding: '20px 24px',
+        borderBottom: '1px solid #e2e8f0',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: 'linear-gradient(135deg, #f8fafc, #eff6ff)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            boxShadow: '0 4px 10px rgba(37, 99, 235, 0.25)'
+          }}>
+            <Sparkles size={20} />
+          </div>
           <div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>AI Decision Assistant</h3>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ReAct Agent + MCP Read-Only Tools</span>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+              Wisualyst AI Assistant
+            </h3>
+            <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
+              ReAct Agent + Live MCP Tools
+            </span>
           </div>
         </div>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-          <X size={20} />
+
+        <button
+          onClick={onClose}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
+            padding: '6px',
+            color: '#64748b',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <X size={18} />
         </button>
       </div>
 
       {/* Messages List */}
-      <div style={{ flex: 1, padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{
+        flex: 1,
+        padding: '20px',
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        backgroundColor: '#f8fafc'
+      }}>
         {messages.map((m, idx) => (
-          <div key={idx} style={{ display: 'flex', gap: '0.75rem', flexDirection: m.sender === 'user' ? 'row-reverse' : 'row' }}>
+          <div
+            key={idx}
+            style={{
+              display: 'flex',
+              gap: '10px',
+              flexDirection: m.sender === 'user' ? 'row-reverse' : 'row'
+            }}
+          >
             <div style={{
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: m.sender === 'user' ? 'var(--primary-indigo)' : 'var(--primary-cyan)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              backgroundColor: m.sender === 'user' ? '#1e293b' : '#eff6ff',
+              color: m.sender === 'user' ? '#ffffff' : '#2563eb',
+              border: m.sender === 'user' ? 'none' : '1px solid #bfdbfe',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              fontWeight: 700,
+              fontSize: '0.8rem'
             }}>
-              {m.sender === 'user' ? <User size={16} color="#fff" /> : <Bot size={16} color="#fff" />}
+              {m.sender === 'user' ? <User size={15} /> : <Bot size={16} />}
             </div>
 
-            <div style={{ maxWidth: '85%' }}>
+            <div style={{ maxWidth: '82%' }}>
               <div style={{
-                background: m.sender === 'user' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid var(--border-glass)',
-                padding: '0.85rem 1rem',
-                borderRadius: '12px',
-                fontSize: '0.85rem',
-                lineHeight: '1.5',
+                backgroundColor: m.sender === 'user' ? '#2563eb' : '#ffffff',
+                color: m.sender === 'user' ? '#ffffff' : '#1e293b',
+                border: m.sender === 'user' ? 'none' : '1px solid #e2e8f0',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                borderTopRightRadius: m.sender === 'user' ? '4px' : '14px',
+                borderTopLeftRadius: m.sender === 'user' ? '14px' : '4px',
+                fontSize: '0.82rem',
+                lineHeight: 1.5,
+                boxShadow: m.sender === 'user' ? '0 4px 12px rgba(37, 99, 235, 0.2)' : '0 2px 6px rgba(0,0,0,0.03)',
                 whiteSpace: 'pre-wrap'
               }}>
                 {m.text}
               </div>
 
               {m.tools_used && m.tools_used.length > 0 && (
-                <div style={{ fontSize: '0.7rem', color: 'var(--primary-cyan)', marginTop: '0.4rem', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <Cpu size={12} /> Tools: {m.tools_used.join(', ')}
+                <div style={{
+                  fontSize: '0.68rem',
+                  color: '#7c3aed',
+                  marginTop: '4px',
+                  fontFamily: 'var(--font-mono)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontWeight: 600
+                }}>
+                  <Cpu size={11} /> Tools: {m.tools_used.join(', ')}
                 </div>
               )}
             </div>
@@ -130,9 +204,20 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
         ))}
 
         {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-            <Sparkles size={16} className="spin" color="var(--primary-indigo)" />
-            ReAct Agent reasoning & querying MCP tools...
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#2563eb',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            padding: '8px 12px',
+            backgroundColor: '#eff6ff',
+            borderRadius: '10px',
+            width: 'fit-content'
+          }}>
+            <Sparkles size={14} className="spin" />
+            <span>AI Reasoning & querying live database tools...</span>
           </div>
         )}
 
@@ -140,22 +225,39 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
       </div>
 
       {/* Suggested Prompts */}
-      <div style={{ padding: '0.75rem 1.25rem', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid var(--border-glass)' }}>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '0.4rem' }}>SUGGESTED PROMPTS:</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+      <div style={{
+        padding: '12px 20px',
+        backgroundColor: '#ffffff',
+        borderTop: '1px solid #e2e8f0'
+      }}>
+        <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, marginBottom: '6px', letterSpacing: '0.3px' }}>
+          SUGGESTED QUESTIONS:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {samplePrompts.map((p, i) => (
-            <button 
-              key={i} 
+            <button
+              key={i}
               onClick={() => handleSend(p)}
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: 'var(--text-muted)',
-                padding: '0.35rem 0.6rem',
-                borderRadius: '6px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                color: '#334155',
+                padding: '6px 10px',
+                borderRadius: '8px',
                 textAlign: 'left',
-                fontSize: '0.75rem',
-                cursor: 'pointer'
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#eff6ff';
+                e.currentTarget.style.borderColor = '#bfdbfe';
+                e.currentTarget.style.color = '#2563eb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#f8fafc';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+                e.currentTarget.style.color = '#334155';
               }}
             >
               {p}
@@ -165,18 +267,33 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
       </div>
 
       {/* Chat Input */}
-      <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--border-glass)', display: 'flex', gap: '0.5rem' }}>
-        <input 
-          type="text" 
-          placeholder="Ask AI about stock risks, forecasts..."
+      <div style={{
+        padding: '16px 20px',
+        backgroundColor: '#ffffff',
+        borderTop: '1px solid #e2e8f0',
+        display: 'flex',
+        gap: '8px',
+        alignItems: 'center'
+      }}>
+        <input
+          type="text"
+          placeholder="Ask AI about stock risks, forecasts, suppliers..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          className="input-dark"
-          style={{ flex: 1 }}
+          className="ui-input"
+          style={{ flex: 1, fontSize: '0.82rem', padding: '10px 14px' }}
         />
-        <button onClick={() => handleSend()} className="btn-primary" disabled={loading} style={{ padding: '0.65rem' }}>
-          <Send size={16} />
+        <button
+          onClick={() => handleSend()}
+          className="btn-primary"
+          disabled={loading || !input.trim()}
+          style={{
+            padding: '10px 14px',
+            opacity: loading || !input.trim() ? 0.6 : 1
+          }}
+        >
+          <Send size={15} />
         </button>
       </div>
     </div>

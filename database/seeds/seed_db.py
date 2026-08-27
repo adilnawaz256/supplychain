@@ -39,7 +39,7 @@ def seed_database(db: Session):
     ]
     warehouse_objs = []
     for code, name, loc, cap in warehouses_data:
-        wh = Warehouse(code=code, name=name, location=loc, capacity=cap)
+        wh = Warehouse(code=code, name=name, location=loc, capacity_sqft=cap)
         db.add(wh)
         warehouse_objs.append(wh)
     db.commit()
@@ -141,7 +141,7 @@ def seed_database(db: Session):
             supplier_id=sup.id,
             product_id=prod.id,
             supplier_sku=f"SUP-SKU-{prod.sku}",
-            contracted_price=prod.unit_cost * 0.95,
+            unit_cost=prod.unit_cost * 0.95,
             lead_time_days=prod.lead_time_days
         )
         db.add(sp)
@@ -169,15 +169,13 @@ def seed_database(db: Session):
                 curr = prod.reorder_point * random.randint(2, 5)
                 alloc = random.randint(5, 20)
 
-            avail = max(0, curr - alloc)
             inv = Inventory(
                 product_id=prod.id,
                 warehouse_id=wh.id,
                 current_stock=curr,
-                allocated_stock=alloc,
-                available_stock=avail,
-                safety_stock=prod.safety_stock_min,
-                max_stock_capacity=prod.reorder_point * 12
+                reserved_stock=alloc,
+                in_transit_stock=0,
+                reorder_quantity=prod.reorder_point
             )
             db.add(inv)
     db.commit()
@@ -210,6 +208,7 @@ def seed_database(db: Session):
                     warehouse_id=wh.id,
                     date=curr_date,
                     quantity_sold=qty,
+                    unit_price=prod.selling_price,
                     revenue=revenue
                 ))
                 curr_date += timedelta(days=1)
@@ -227,8 +226,13 @@ def seed_database(db: Session):
         ("Industrial Tech Enterprises", "supply@indtech.com", "West"),
     ]
     cust_objs = []
-    for name, email, region in customers_data:
-        c = Customer(name=name, email=email, region=region)
+    for idx, (name, email, region) in enumerate(customers_data):
+        c = Customer(
+            customer_code=f"CUST-{idx+1:03d}",
+            name=name,
+            email=email,
+            tier="PREMIUM" if region == "West" else "STANDARD"
+        )
         db.add(c)
         cust_objs.append(c)
     db.commit()
@@ -263,7 +267,8 @@ def seed_database(db: Session):
                 order_id=ord_obj.id,
                 product_id=p.id,
                 quantity=qty,
-                unit_price=p.selling_price
+                unit_price=p.selling_price,
+                total_price=round(item_amt, 2)
             )
             db.add(oi)
         

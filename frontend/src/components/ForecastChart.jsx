@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Calendar, Target, CheckCircle2 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 export default function ForecastChart({ products, selectedProductId, onSelectProduct }) {
   const [forecast, setForecast] = useState(null);
@@ -21,7 +22,7 @@ export default function ForecastChart({ products, selectedProductId, onSelectPro
   const fetchForecast = async (prodId, days) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/forecast/${prodId}?horizon_days=${days}`);
+      const res = await fetch(`${API_BASE_URL}/api/forecast/${prodId}?horizon_days=${days}`);
       if (res.ok) {
         const data = await res.json();
         setForecast(data);

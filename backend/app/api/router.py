@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, File, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 from backend.app.core.database import get_db, SessionLocal, engine, Base
 from backend.app.schemas.schemas import (
@@ -17,10 +18,18 @@ from connectors.csv_connector import CSVIngestionConnector
 from connectors.mock_erp_connector import MockERPConnector
 from connectors.mock_wms_connector import MockWMSConnector
 from database.seeds.seed_db import seed_database
+from backend.app.models.models import Role, WorkspaceMember
 
 router = APIRouter()
 
-# --- Seed Endpoint ---
+# --- Database Administration Endpoints ---
+@router.post("/api/database/clean", tags=["Admin"])
+def clean_database(db: Session = Depends(get_db)):
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    return {"status": "SUCCESS", "message": "Database completely cleaned for a new fresh workspace!"}
+
+@router.post("/api/database/seed", tags=["Admin"])
 @router.post("/api/seed-database", tags=["Admin"])
 def run_seed_db(db: Session = Depends(get_db)):
     seed_database(db)
@@ -51,7 +60,7 @@ def get_warehouses(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     whs = service.warehouse_repo.get_all()
     return [{
-        "id": w.id, "code": w.code, "name": w.name, "location": w.location, "capacity": w.capacity,
+        "id": w.id, "code": w.code, "name": w.name, "location": w.location, "capacity": getattr(w, "capacity_sqft", 25000),
         "created_at": w.created_at.isoformat() if w.created_at else None
     } for w in whs]
 
@@ -151,6 +160,51 @@ def create_workspace(payload: Dict[str, Any] = Body(...)):
         "selected_modules": payload.get("modules", ["inventory", "demand", "procurement", "assortment"])
     }
 
+@router.get("/api/workspace/members", tags=["Wisualyst Onboarding"])
+def get_workspace_members(db: Session = Depends(get_db)):
+    members = db.query(WorkspaceMember).all()
+    return [{
+        "id": m.id,
+        "name": m.name,
+        "email": m.email,
+        "role": m.role,
+        "initials": m.initials,
+        "color": m.color,
+        "bg": m.bg
+    } for m in members]
+
+@router.post("/api/workspace/invite", tags=["Wisualyst Onboarding"])
+def invite_workspace_member(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    email = payload.get("email", "")
+    name = payload.get("name", email.split("@")[0].title() if "@" in email else "Team Member")
+    role = payload.get("role", "Viewer")
+    initials = "".join([p[0].upper() for p in name.split()[:2]]) or "U"
+    
+    new_m = WorkspaceMember(
+        name=name,
+        email=email,
+        role=role,
+        initials=initials,
+        color="#2563eb",
+        bg="#eff6ff"
+    )
+    db.add(new_m)
+    db.commit()
+    db.refresh(new_m)
+    return {
+        "status": "SUCCESS",
+        "message": f"Invitation sent to {new_m.email} as {new_m.role}",
+        "member": {
+            "id": new_m.id,
+            "name": new_m.name,
+            "email": new_m.email,
+            "role": new_m.role,
+            "initials": new_m.initials,
+            "color": new_m.color,
+            "bg": new_m.bg
+        }
+    }
+
 @router.post("/api/connectors/test", tags=["Wisualyst Onboarding"])
 def test_connector(payload: Dict[str, Any] = Body(...)):
     c_type = payload.get("type", "DIRECT_DB").upper()
@@ -187,7 +241,7 @@ def test_connector(payload: Dict[str, Any] = Body(...)):
     return {"status": "SUCCESS", "message": f"Connection to {c_type} validated successfully!"}
 
 @router.post("/api/connectors/discover", tags=["Wisualyst Onboarding"])
-def discover_tables(payload: Dict[str, Any] = Body(...)):
+def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     c_type = payload.get("type", "DIRECT_DB").upper()
     if c_type == "DIRECT_DB":
         from connectors.direct_db_connector import DirectDBConnector
@@ -198,7 +252,8 @@ def discover_tables(payload: Dict[str, Any] = Body(...)):
             username=payload.get("username", ""),
             password=payload.get("password", "")
         )
-        return {"tables": connector.discover_tables()}
+        tables = connector.discover_tables()
+        return {"tables": tables}
     elif c_type == "ZOHO":
         from connectors.zoho_connector import ZohoConnector
         return {"tables": ZohoConnector().discover_modules()}
@@ -224,6 +279,69 @@ def launch_workspace():
         "status": "LAUNCHED",
         "workspace_id": "ws_dubai_retail_01",
         "message": "Workspace successfully configured and launched!"
+    }
+
+
+@router.get("/api/access-control/roles", tags=["Access Control"])
+def get_roles(db: Session = Depends(get_db)):
+    roles = db.query(Role).all()
+    if not roles:
+        # Seed standard initial roles into database if not present
+        init_roles = [
+            Role(role_key="admin", name="Admin", description="Full access to all features, settings, and user management.", scope="Full Access", scope_color="#7c3aed", scope_bg="#f3e8ff", author="System"),
+            Role(role_key="de", name="Data Engineer", description="Manage data sources, mappings, and intelligence engines.", scope="Data & Engine Access", scope_color="#2563eb", scope_bg="#dbeafe", author="System"),
+            Role(role_key="da", name="Data Analyst", description="Analyze data, create reports, and view insights.", scope="Read & Analyze", scope_color="#059669", scope_bg="#d1fae5", author="System"),
+            Role(role_key="om", name="Operations Manager", description="Monitor KPIs, manage alerts, and view recommendations.", scope="Limited Access", scope_color="#d97706", scope_bg="#fef3c7", author="System"),
+            Role(role_key="viewer", name="Viewer", description="View dashboards and reports with read-only access.", scope="Read Only", scope_color="#475569", scope_bg="#f1f5f9", author="System")
+        ]
+        db.add_all(init_roles)
+        db.commit()
+        roles = db.query(Role).all()
+    
+    result = []
+    for r in roles:
+        users_count = db.query(WorkspaceMember).filter(WorkspaceMember.role == r.name).count()
+        result.append({
+            "id": r.role_key,
+            "name": r.name,
+            "desc": r.description,
+            "usersCount": users_count,
+            "scope": r.scope,
+            "scopeColor": r.scope_color,
+            "scopeBg": r.scope_bg,
+            "lastModified": r.updated_at.strftime("%b %d, %Y") if r.updated_at else "Today",
+            "author": r.author
+        })
+    return result
+
+@router.post("/api/access-control/roles", tags=["Access Control"])
+def create_role(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    role_key = payload.get("name", "custom").lower().replace(" ", "_")
+    new_role = Role(
+        role_key=role_key,
+        name=payload.get("name", "New Role"),
+        description=payload.get("description", "Custom Role"),
+        scope=payload.get("scope", "Custom Scope"),
+        scope_color="#2563eb",
+        scope_bg="#eff6ff",
+        author=payload.get("author", "Admin")
+    )
+    db.add(new_role)
+    db.commit()
+    db.refresh(new_role)
+    return {
+        "status": "SUCCESS",
+        "role": {
+            "id": new_role.role_key,
+            "name": new_role.name,
+            "desc": new_role.description,
+            "usersCount": 0,
+            "scope": new_role.scope,
+            "scopeColor": new_role.scope_color,
+            "scopeBg": new_role.scope_bg,
+            "lastModified": "Today",
+            "author": new_role.author
+        }
     }
 
 # --- MCP Server Integration ---
@@ -321,4 +439,3 @@ def mock_wms_inventory():
             {"sku": "SKU-IND-201", "current_stock": 8, "allocated_stock": 2}
         ]
     }
-

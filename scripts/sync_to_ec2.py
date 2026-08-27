@@ -5,6 +5,11 @@ import time
 import subprocess
 import paramiko
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 def sync_and_launch(ip: str, key_file: str):
     print(f"📡 Connecting to EC2 Instance {ip} via SSH...")
     ssh = paramiko.SSHClient()
@@ -18,7 +23,7 @@ def sync_and_launch(ip: str, key_file: str):
             print("✅ Connected to EC2!")
             break
         except Exception as e:
-            print(f"⏳ Waiting for SSH server readiness (attempt {i+1}/15)...")
+            print(f"⏳ Waiting for SSH server readiness (attempt {i+1}/15)...: {e}")
             time.sleep(10)
             
     if not connected:
@@ -31,21 +36,27 @@ def sync_and_launch(ip: str, key_file: str):
     print(stdout.read().decode())
 
     # Install Docker & Docker Compose
-    install_cmd = "sudo apt update && sudo apt install -y docker.io docker-compose && sudo systemctl enable --now docker && sudo usermod -aG docker ubuntu"
+    install_cmd = "sudo apt update && sudo apt install -y docker.io docker-compose git && sudo systemctl enable --now docker && sudo usermod -aG docker ubuntu"
     print("📦 Installing Docker & Docker Compose on EC2...")
     stdin, stdout, stderr = ssh.exec_command(install_cmd)
     print(stdout.read().decode())
     print(stderr.read().decode())
 
-    # Sync local directory using rsync / scp command
-    local_dir = os.path.abspath(".")
-    print(f"🔄 Uploading project workspace to EC2 ({ip}:/home/ubuntu/app)...")
-    
-    # Create remote dir
+    # If git repo exists on remote, git pull or sync
+    print(f"🔄 Deploying latest code on EC2 ({ip})...")
     ssh.exec_command("mkdir -p /home/ubuntu/app")
     
-    rsync_cmd = f"rsync -avz -e 'ssh -i {key_file} -o StrictHostKeyChecking=no' --exclude 'node_modules' --exclude 'venv' --exclude '.git' {local_dir}/ ubuntu@{ip}:/home/ubuntu/app/"
-    subprocess.run(rsync_cmd, shell=True)
+    # Try git clone/pull on EC2 if available, or upload
+    deploy_cmd = """
+    if [ -d "/home/ubuntu/app/.git" ]; then
+        cd /home/ubuntu/app && git pull origin main
+    else
+        git clone https://github.com/adilnawaz256/supplychain.git /home/ubuntu/app
+    fi
+    """
+    stdin, stdout, stderr = ssh.exec_command(deploy_cmd)
+    print(stdout.read().decode())
+    print(stderr.read().decode())
 
     # Launch Docker Compose
     print("🚀 Building and starting Docker containers on EC2...")
@@ -57,6 +68,7 @@ def sync_and_launch(ip: str, key_file: str):
     print("🎉 WISUALYST PLATFORM DEPLOYED AND RUNNING ON EC2!")
 
 if __name__ == "__main__":
-    ip = sys.argv[1] if len(sys.argv) > 1 else "3.109.122.139"
+    ip = sys.argv[1] if len(sys.argv) > 1 else "3.109.14.208"
     key = os.path.abspath("wisualyst-key.pem")
     sync_and_launch(ip, key)
+

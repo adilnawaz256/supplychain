@@ -58,12 +58,12 @@ class Warehouse(Base):
     code = Column(String(50), nullable=False, unique=True, index=True)
     name = Column(String(150), nullable=False)
     location = Column(String(200), nullable=False)
-    capacity = Column(Integer, nullable=False, default=10000)
+    capacity_sqft = Column(Integer, default=50000)
+    is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     inventory = relationship("Inventory", back_populates="warehouse")
-    sales_history = relationship("SalesHistory", back_populates="warehouse")
     orders = relationship("Order", back_populates="warehouse")
     purchase_orders = relationship("PurchaseOrder", back_populates="warehouse")
     shipments = relationship("Shipment", back_populates="warehouse")
@@ -72,28 +72,63 @@ class Inventory(Base):
     __tablename__ = "inventory"
 
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
-    warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False)
     current_stock = Column(Integer, nullable=False, default=0)
-    allocated_stock = Column(Integer, nullable=False, default=0)
-    available_stock = Column(Integer, nullable=False, default=0)
-    safety_stock = Column(Integer, nullable=False, default=10)
-    max_stock_capacity = Column(Integer, nullable=False, default=1000)
-    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    reserved_stock = Column(Integer, default=0)
+    in_transit_stock = Column(Integer, default=0)
+    reorder_quantity = Column(Integer, default=50)
+    last_restock_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     product = relationship("Product", back_populates="inventory")
     warehouse = relationship("Warehouse", back_populates="inventory")
 
-class InventoryTransaction(Base):
-    __tablename__ = "inventory_transactions"
+    @property
+    def available_stock(self) -> int:
+        return max(0, self.current_stock - (self.reserved_stock or 0))
+
+    @property
+    def allocated_stock(self) -> int:
+        return self.reserved_stock or 0
+
+    @property
+    def safety_stock(self) -> int:
+        return self.product.safety_stock_min if self.product else 10
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
 
     id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), nullable=False, unique=True, index=True)
+    name = Column(String(150), nullable=False)
+    contact_email = Column(String(100), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    lead_time_avg_days = Column(Integer, default=7)
+    rating = Column(Float, default=4.5)
+    otif_score = Column(Float, default=92.5) # On-Time In-Full score percentage
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    supplier_products = relationship("SupplierProduct", back_populates="supplier")
+    purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
+
+class SupplierProduct(Base):
+    __tablename__ = "supplier_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False)
-    transaction_type = Column(String(50), nullable=False) # INBOUND, OUTBOUND, ADJUSTMENT
-    quantity = Column(Integer, nullable=False)
-    reference_id = Column(String(100), nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    supplier_sku = Column(String(100), nullable=True)
+    moq = Column(Integer, default=1)
+    unit_cost = Column(Float, nullable=False)
+    lead_time_days = Column(Integer, default=7)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    supplier = relationship("Supplier", back_populates="supplier_products")
+    product = relationship("Product", back_populates="supplier_products")
 
 class SalesHistory(Base):
     __tablename__ = "sales_history"
@@ -103,18 +138,33 @@ class SalesHistory(Base):
     warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False, index=True)
     date = Column(DateTime, nullable=False, index=True)
     quantity_sold = Column(Integer, nullable=False)
-    revenue = Column(Float, nullable=False, default=0.0)
+    unit_price = Column(Float, nullable=False)
+    revenue = Column(Float, nullable=False)
+    is_promotional = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     product = relationship("Product", back_populates="sales_history")
-    warehouse = relationship("Warehouse", back_populates="sales_history")
+
+class RetailSpace(Base):
+    __tablename__ = "retail_spaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(String(50), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    category = Column(String(100), default="General")
+    allocated_space_sqm = Column(Float, default=1.0)
+    display_units = Column(Integer, default=10)
+    shelf_capacity = Column(Integer, default=50)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True, index=True)
+    customer_code = Column(String(50), nullable=False, unique=True, index=True)
     name = Column(String(150), nullable=False)
-    email = Column(String(150), nullable=True)
-    region = Column(String(100), nullable=False, default="Default")
+    email = Column(String(100), nullable=True)
+    tier = Column(String(20), default="STANDARD")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     orders = relationship("Order", back_populates="customer")
@@ -123,12 +173,15 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_number = Column(String(100), nullable=False, unique=True, index=True)
+    order_number = Column(String(50), nullable=False, unique=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False)
-    order_date = Column(DateTime, default=datetime.utcnow)
+    order_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     status = Column(String(50), default="PENDING")
     total_amount = Column(Float, default=0.0)
+    shipping_address = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     customer = relationship("Customer", back_populates="orders")
     warehouse = relationship("Warehouse", back_populates="orders")
@@ -143,91 +196,20 @@ class OrderItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
+    total_price = Column(Float, nullable=False)
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
-
-class Supplier(Base):
-    __tablename__ = "suppliers"
-
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String(50), nullable=False, unique=True, index=True)
-    name = Column(String(150), nullable=False)
-    contact_email = Column(String(150), nullable=True)
-    rating = Column(Float, default=4.5)
-    otif_score = Column(Float, default=92.5) # On-Time In-Full percentage
-    lead_time_avg_days = Column(Integer, default=7)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    supplier_products = relationship("SupplierProduct", back_populates="supplier")
-    purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
-
-class RetailSpace(Base):
-    __tablename__ = "retail_spaces"
-
-    id = Column(Integer, primary_key=True, index=True)
-    store_id = Column(String(50), nullable=False, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
-    category = Column(String(100), nullable=False)
-    allocated_space_sqm = Column(Float, nullable=False, default=1.0)
-    display_units = Column(Integer, nullable=False, default=10)
-    shelf_capacity = Column(Integer, nullable=False, default=50)
-
-    product = relationship("Product")
-
-class Workspace(Base):
-    __tablename__ = "workspaces"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(150), nullable=False)
-    industry = Column(String(100), nullable=False, default="Retail & Consumer Goods")
-    region = Column(String(100), nullable=False, default="Global / Middle East")
-    status = Column(String(50), default="ACTIVE") # CREATED, ONBOARDING, ACTIVE
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-class DataSource(Base):
-    __tablename__ = "data_sources"
-
-    id = Column(Integer, primary_key=True, index=True)
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
-    type = Column(String(50), nullable=False) # SFTP, DIRECT_DB, ZOHO
-    name = Column(String(100), nullable=False)
-    status = Column(String(50), default="CONNECTED") # CONNECTING, CONNECTED, SYNCED, ERROR
-    config_json = Column(Text, nullable=True)
-    last_synced_at = Column(DateTime, default=datetime.utcnow)
-
-class FieldMappingRecord(Base):
-    __tablename__ = "field_mapping_records"
-
-    id = Column(Integer, primary_key=True, index=True)
-    source_type = Column(String(50), nullable=False) # SFTP, DIRECT_DB, ZOHO
-    source_field = Column(String(100), nullable=False)
-    canonical_field = Column(String(100), nullable=False)
-    confidence = Column(Float, default=0.9)
-    confirmed = Column(Integer, default=1)
-
-
-class SupplierProduct(Base):
-    __tablename__ = "supplier_products"
-
-    id = Column(Integer, primary_key=True, index=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    supplier_sku = Column(String(100), nullable=True)
-    contracted_price = Column(Float, nullable=False)
-    lead_time_days = Column(Integer, nullable=False, default=7)
-
-    supplier = relationship("Supplier", back_populates="supplier_products")
-    product = relationship("Product", back_populates="supplier_products")
 
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    po_number = Column(String(100), nullable=False, unique=True, index=True)
+    po_number = Column(String(50), nullable=False, unique=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
     warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False)
-    status = Column(String(50), default="PENDING") # PENDING, ISSUED, RECEIVED, CANCELLED
+    order_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    status = Column(String(50), default="PENDING")
     expected_delivery_date = Column(DateTime, nullable=True)
     total_cost = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -262,3 +244,41 @@ class Shipment(Base):
 
     order = relationship("Order", back_populates="shipment")
     warehouse = relationship("Warehouse", back_populates="shipments")
+
+class InventoryTransaction(Base):
+    __tablename__ = "inventory_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False)
+    transaction_type = Column(String(50), nullable=False) # INBOUND, OUTBOUND, ADJUSTMENT
+    quantity = Column(Integer, nullable=False)
+    reference_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# --- Dynamic Access Control & Workspace Member Models ---
+class Role(Base):
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role_key = Column(String(50), nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    scope = Column(String(100), default="Full Access")
+    scope_color = Column(String(20), default="#7c3aed")
+    scope_bg = Column(String(20), default="#f3e8ff")
+    author = Column(String(100), default="Admin")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(150), nullable=False, unique=True)
+    role = Column(String(50), default="Viewer")
+    initials = Column(String(10), default="U")
+    color = Column(String(20), default="#2563eb")
+    bg = Column(String(20), default="#eff6ff")
+    created_at = Column(DateTime, default=datetime.utcnow)

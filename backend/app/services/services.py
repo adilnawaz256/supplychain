@@ -1,3 +1,4 @@
+
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from backend.app.repositories.repositories import (
@@ -36,6 +37,25 @@ class SupplyChainService:
         warehouses = self.warehouse_repo.get_all()
         inventory_items = self.inventory_repo.get_all()
         
+        if not products:
+            readiness = self.validation_engine.evaluate_readiness()
+            return {
+                "total_products": 0,
+                "total_warehouses": len(warehouses),
+                "total_inventory_items": 0,
+                "total_inventory_value": 0.0,
+                "stockout_critical_count": 0,
+                "stockout_high_count": 0,
+                "excess_inventory_count": 0,
+                "open_purchase_orders": 0,
+                "recent_sales_30d_revenue": 0.0,
+                "top_risk_products": [],
+                "potential_savings": 0.0,
+                "avg_supplier_otif": 0.0,
+                "avg_store_gmroi": 0.0,
+                "overall_readiness_pct": readiness.get("overall_readiness_pct", 0.0)
+            }
+        
         total_inv_value = sum(item.current_stock * item.product.unit_cost for item in inventory_items if item.product)
         
         risks = self.risk_engine.get_all_inventory_risks()
@@ -68,11 +88,10 @@ class SupplyChainService:
             "recent_sales_30d_revenue": round(rev_total, 2),
             "top_risk_products": top_risks,
             "potential_savings": proc_intel.get("potential_savings", 0.0),
-            "avg_supplier_otif": proc_intel.get("avg_supplier_otif_pct", 92.5),
-            "avg_store_gmroi": assort_intel.get("avg_store_gmroi", 2.4),
-            "overall_readiness_pct": readiness.get("overall_readiness_pct", 91.0)
+            "avg_supplier_otif": proc_intel.get("avg_supplier_otif_pct", 0.0),
+            "avg_store_gmroi": assort_intel.get("avg_store_gmroi", 0.0),
+            "overall_readiness_pct": readiness.get("overall_readiness_pct", 0.0)
         }
 
     def get_inventory_recommendations(self) -> List[Dict[str, Any]]:
         return self.recommendation_engine.get_unified_recommendations()
-
