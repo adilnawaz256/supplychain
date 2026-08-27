@@ -8,7 +8,7 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
     HOST: str = os.getenv("HOST", "0.0.0.0")
     
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./supply_chain.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres.cugiwyrgfptehvkexejg:StrongPassword%40123..@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres")
     
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

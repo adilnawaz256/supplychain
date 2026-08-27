@@ -95,6 +95,8 @@ export default function DataSourcesView({ onNavigate }) {
         setValidation(valData);
         if (valData.dataset_summary?.products_mapped > 0) {
           setConnectedSources({ pg: true, zoho: true, sftp: true });
+        } else {
+          setConnectedSources({ pg: false, zoho: false, sftp: false });
         }
       }
 

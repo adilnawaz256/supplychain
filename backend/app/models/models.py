@@ -89,13 +89,25 @@ class Inventory(Base):
     def available_stock(self) -> int:
         return max(0, self.current_stock - (self.reserved_stock or 0))
 
+    @available_stock.setter
+    def available_stock(self, value: int):
+        pass
+
     @property
     def allocated_stock(self) -> int:
         return self.reserved_stock or 0
 
+    @allocated_stock.setter
+    def allocated_stock(self, value: int):
+        self.reserved_stock = value
+
     @property
     def safety_stock(self) -> int:
         return self.product.safety_stock_min if self.product else 10
+
+    @safety_stock.setter
+    def safety_stock(self, value: int):
+        pass
 
 class Supplier(Base):
     __tablename__ = "suppliers"

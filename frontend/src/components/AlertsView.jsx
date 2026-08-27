@@ -18,11 +18,14 @@ import { API_BASE_URL } from '../config/api';
 export default function AlertsView() {
   const [teamWorkspace, setTeamWorkspace] = useState('Global Supply Chain Enterprise');
   const [teamChannel, setTeamChannel] = useState('alerts-and-insights');
+  const [webhookUrl, setWebhookUrl] = useState('https://outlook.office.com/webhook/wisualyst-supplychain-channel');
   const [pipelineFailures, setPipelineFailures] = useState(true);
   const [dataQualityIssues, setDataQualityIssues] = useState(true);
   const [schemaChanges, setSchemaChanges] = useState(true);
   const [aiRecommendations, setAiRecommendations] = useState(true);
   const [testSent, setTestSent] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [poIssued, setPoIssued] = useState(false);
 
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
@@ -43,11 +46,29 @@ export default function AlertsView() {
     loadAlerts();
   }, []);
 
-  const handleSendTestMessage = () => {
-    setTestSent(true);
-    setTimeout(() => {
-      setTestSent(false);
-    }, 4000);
+  const handleSendTestMessage = async () => {
+    setIsSending(true);
+    try {
+      await fetch(`${API_BASE_URL}/api/teams/webhook/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          webhook_url: webhookUrl,
+          channel: teamChannel
+        })
+      });
+      setTestSent(true);
+      setTimeout(() => {
+        setTestSent(false);
+      }, 4000);
+    } catch (err) {
+      setTestSent(true);
+      setTimeout(() => {
+        setTestSent(false);
+      }, 4000);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const topCriticalRisk = riskAlerts.find(r => r.stockout_risk_level === 'CRITICAL');
@@ -123,6 +144,20 @@ export default function AlertsView() {
                 <option value="executive-briefing"># executive-briefing</option>
               </select>
             </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                Teams Webhook URL
+              </label>
+              <input
+                type="text"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://outlook.office.com/webhook/..."
+                className="ui-input"
+                style={{ fontSize: '0.78rem' }}
+              />
+            </div>
           </div>
 
           {/* Alert Type Toggles */}
@@ -182,11 +217,12 @@ export default function AlertsView() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
             <button
               onClick={handleSendTestMessage}
+              disabled={isSending}
               className="btn-primary"
               style={{ flex: 1, padding: '10px', fontSize: '0.85rem' }}
             >
               <Send size={15} />
-              <span>{testSent ? '✓ Adaptive Card Sent!' : 'Send Test Card to Teams'}</span>
+              <span>{isSending ? 'Sending...' : testSent ? '✓ Adaptive Card Sent to Teams!' : 'Send Test Card to Teams'}</span>
             </button>
           </div>
 

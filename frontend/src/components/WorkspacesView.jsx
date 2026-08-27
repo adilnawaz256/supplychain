@@ -190,6 +190,25 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
     }
   };
 
+  const handleStartFresh = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/database/clean`, { method: 'POST' });
+      setSummary({ total_products: 0 });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleConnectDemoData = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/database/seed`, { method: 'POST' });
+      const sumRes = await fetch(`${API_BASE_URL}/api/control-tower/summary`);
+      if (sumRes.ok) setSummary(await sumRes.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const setupPct = hasData ? 100 : 25;
 
   return (
@@ -619,6 +638,16 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
                     </div>
                     <CheckCircle2 size={16} color={hasData ? '#10b981' : '#94a3b8'} />
                   </div>
+                </div>
+
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button
+                    onClick={handleStartFresh}
+                    className="btn-secondary"
+                    style={{ width: '100%', padding: '8px', fontSize: '0.75rem', color: '#64748b' }}
+                  >
+                    🔄 Start Fresh Workspace (0 Data)
+                  </button>
                 </div>
               </div>
             </div>

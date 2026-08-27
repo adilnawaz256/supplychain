@@ -37,8 +37,21 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
     loadRecs();
   }, []);
 
-  const handleApprove = (id) => {
+  const handleApprove = async (id, recObj) => {
     setApprovedIds(prev => new Set([...prev, id]));
+    try {
+      await fetch(`${API_BASE_URL}/api/teams/webhook/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'AI_RECOMMENDATION',
+          channel: '#alerts-and-insights',
+          data: recObj || { recommendation_id: id, title: 'Approved Prescriptive Action', financial_impact: '$15,000' }
+        })
+      });
+    } catch (err) {
+      console.error('Teams notification broadcast note:', err);
+    }
   };
 
   const filteredRecs = recommendations.filter(r => {
@@ -200,7 +213,7 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
                   </button>
 
                   <button
-                    onClick={() => handleApprove(rec.recommendation_id)}
+                    onClick={() => handleApprove(rec.recommendation_id, rec)}
                     className="btn-primary"
                     disabled={isApproved}
                     style={{

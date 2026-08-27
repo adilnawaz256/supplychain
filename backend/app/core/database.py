@@ -4,7 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from backend.app.core.config import settings
 
-db_url = settings.DATABASE_URL or "sqlite:///./supply_chain.db"
+db_url = settings.DATABASE_URL or "postgresql://postgres.cugiwyrgfptehvkexejg:StrongPassword%40123..@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
 
 # Clean connection parameters that psycopg2 does not accept (like ?pgbouncer=true)
 if "?" in db_url and "sqlite" not in db_url:
@@ -16,20 +16,8 @@ if db_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
     engine = create_engine(db_url, connect_args=connect_args, echo=False)
 else:
-    if "+asyncpg" in db_url:
-        sync_url = db_url.replace("+asyncpg", "")
-    else:
-        sync_url = db_url
-    try:
-        engine = create_engine(sync_url, echo=False, pool_pre_ping=True)
-        # Test connection
-        with engine.connect() as conn:
-            pass
-    except Exception as e:
-        print(f"Warning: Primary database connection failed ({e}). Falling back to SQLite local database.")
-        sqlite_url = "sqlite:///./supply_chain.db"
-        connect_args = {"check_same_thread": False}
-        engine = create_engine(sqlite_url, connect_args=connect_args, echo=False)
+    sync_url = db_url.replace("+asyncpg", "") if "+asyncpg" in db_url else db_url
+    engine = create_engine(sync_url, echo=False, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

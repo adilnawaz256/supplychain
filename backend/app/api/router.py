@@ -19,8 +19,52 @@ from connectors.mock_erp_connector import MockERPConnector
 from connectors.mock_wms_connector import MockWMSConnector
 from database.seeds.seed_db import seed_database
 from backend.app.models.models import Role, WorkspaceMember
+from backend.app.services.teams_notifier import MicrosoftTeamsNotifier
 
 router = APIRouter()
+teams_notifier = MicrosoftTeamsNotifier()
+
+# --- Microsoft Teams Integration Endpoints ---
+@router.post("/api/teams/webhook/test", tags=["Microsoft Teams Integration"])
+def send_teams_test_card(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    webhook_url = payload.get("webhook_url")
+    channel = payload.get("channel", "#alerts-and-insights")
+    
+    # Try fetching a top critical risk to display in test card
+    service = SupplyChainService(db)
+    risks = service.risk_engine.get_all_inventory_risks()
+    top_risk = next((r for r in risks if r["stockout_risk_level"] == "CRITICAL"), risks[0] if risks else None)
+    
+    if not top_risk:
+        return {
+            "status": "INFO",
+            "message": "No inventory risk records currently in database to dispatch to Teams. Connect data sources first.",
+            "detail": teams_notifier.get_recent_notifications()
+        }
+    
+    card_msg = teams_notifier.build_stockout_alert_card(top_risk, channel=channel)
+    result = teams_notifier.send_webhook_notification(webhook_url, card_msg)
+    return {"status": "SUCCESS", "message": "Microsoft Teams Adaptive Card sent successfully!", "detail": result}
+
+@router.post("/api/teams/webhook/send", tags=["Microsoft Teams Integration"])
+def send_teams_notification(payload: Dict[str, Any] = Body(...)):
+    webhook_url = payload.get("webhook_url")
+    notification_type = payload.get("type", "STOCKOUT_ALERT")
+    alert_data = payload.get("data", {})
+    channel = payload.get("channel", "#alerts-and-insights")
+    
+    if notification_type == "AI_RECOMMENDATION":
+        card_msg = teams_notifier.build_recommendation_card(alert_data, channel=channel)
+    else:
+        card_msg = teams_notifier.build_stockout_alert_card(alert_data, channel=channel)
+        
+    result = teams_notifier.send_webhook_notification(webhook_url, card_msg)
+    return {"status": "SUCCESS", "detail": result}
+
+@router.get("/api/teams/notifications", tags=["Microsoft Teams Integration"])
+def get_teams_notifications():
+    return teams_notifier.get_recent_notifications()
+
 
 # --- Database Administration Endpoints ---
 @router.post("/api/database/clean", tags=["Admin"])

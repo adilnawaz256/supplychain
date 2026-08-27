@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
 from backend.app.core.database import Base, engine, SessionLocal
 from backend.app.api.router import router
-from database.seeds.seed_db import seed_database
+import backend.app.models.models
 from backend.app.models.models import Product
 
 app = FastAPI(

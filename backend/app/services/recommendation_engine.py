@@ -24,7 +24,7 @@ class UnifiedRecommendationEngine:
         risks = self.risk_engine.get_all_inventory_risks()
         for r in risks:
             if r["stockout_risk_level"] in ["CRITICAL", "HIGH"]:
-                impact = round(float(r["current_stock"] * r.get("unit_cost", 45.0) * 3.5), 2)
+                impact = round(float(r["current_stock"] * r.get("unit_cost", 0.0) * 3.5), 2)
                 recommendations.append({
                     "recommendation_id": f"REC_INV_{rec_counter:03d}",
                     "module": "inventory",
@@ -33,7 +33,7 @@ class UnifiedRecommendationEngine:
                     "severity": "critical" if r["stockout_risk_level"] == "CRITICAL" else "high",
                     "title": f"Stockout Risk: {r['product_name']}",
                     "summary": f"Product {r['sku']} has only {r.get('days_of_inventory', 0)} days of stock remaining at {r['warehouse_name']}",
-                    "reason": f"Available stock ({r['current_stock']}) is below safety threshold ({r.get('safety_stock', 10)}) with lead time of {r['lead_time_days']} days.",
+                    "reason": f"Available stock ({r['current_stock']}) is below safety threshold ({r.get('safety_stock', 0)}) with lead time of {r['lead_time_days']} days.",
                     "financial_impact": impact,
                     "confidence": 0.94,
                     "recommended_action": f"Issue emergency purchase order for {r['reorder_point'] * 2} units immediately.",

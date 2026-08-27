@@ -21,15 +21,15 @@ class AssortmentOptimizerEngine:
 
         for p in products:
             sp = self.db.query(RetailSpace).filter(RetailSpace.product_id == p.id).first()
-            allocated_sqm = sp.allocated_space_sqm if sp else 1.2
-            display_units = sp.display_units if sp else 15
-            shelf_cap = sp.shelf_capacity if sp else 50
+            allocated_sqm = sp.allocated_space_sqm if sp else 0.0
+            display_units = sp.display_units if sp else 0
+            shelf_cap = sp.shelf_capacity if sp else 0
             total_allocated_sqm += allocated_sqm
 
             # Sales history calculation
             sales = self.db.query(SalesHistory).filter(SalesHistory.product_id == p.id).all()
-            qty_sold = sum(s.quantity_sold for s in sales) if sales else 120
-            revenue = sum(s.revenue for s in sales) if sales else (qty_sold * p.selling_price)
+            qty_sold = sum(s.quantity_sold for s in sales) if sales else 0
+            revenue = sum(s.revenue for s in sales) if sales else 0.0
             total_revenue += revenue
 
             # Gross Margin & GMROI
