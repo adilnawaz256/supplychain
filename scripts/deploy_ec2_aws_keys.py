@@ -88,7 +88,7 @@ def deploy_using_aws_credentials(instance_id: str = "i-008e760e264afb4b9"):
             rm -rf /tmp/supplychain_git
         fi
         cd /home/ubuntu/app && git pull origin main
-        sudo docker-compose build --no-cache backend
+        sudo docker-compose build --no-cache
         sudo docker-compose down && sudo docker-compose up -d
         """
         stdin, stdout, stderr = ssh.exec_command(deploy_cmd)
