@@ -24,7 +24,7 @@ def main():
     run_cmd("git push origin main")
 
     print("🖥️ 3. Deploying to EC2 via AWS API...")
-    run_cmd("python scripts/deploy_ec2_aws_keys.py i-008e760e264afb4b9")
+    run_cmd(f"{sys.executable} scripts/deploy_ec2_aws_keys.py i-008e760e264afb4b9")
 
     print("\n🎉 Deployment execution finished!")
 
