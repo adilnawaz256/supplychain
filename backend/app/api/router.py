@@ -173,8 +173,11 @@ def get_module_inventory(db: Session = Depends(get_db)):
     }
 
 @router.get("/api/modules/demand", tags=["Wisualyst Modules"])
-def get_module_demand(product_id: int = 1, db: Session = Depends(get_db)):
+def get_module_demand(product_id: Optional[int] = None, db: Session = Depends(get_db)):
     service = SupplyChainService(db)
+    if not product_id:
+        first_prod = db.query(Product).first()
+        product_id = first_prod.id if first_prod else 1
     return service.forecast_engine.generate_forecast(product_id=product_id, horizon_days=30)
 
 @router.get("/api/modules/procurement", tags=["Wisualyst Modules"])

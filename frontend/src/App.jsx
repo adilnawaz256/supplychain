@@ -10,6 +10,7 @@ import AccessControlView from './components/AccessControlView';
 import IntelligenceEnginesView from './components/IntelligenceEnginesView';
 import RecommendationsView from './components/RecommendationsView';
 import DashboardView from './components/DashboardView';
+import BIIntegrationsPanel from './components/BIIntegrationsPanel';
 import AIAssistantDrawer from './components/AIAssistantDrawer';
 import {
   NewRoleModal,
@@ -23,7 +24,13 @@ export default function App() {
   // Session / User state - defaults to null until authenticated or session restored
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = window.location.hash.replace('#', '').toLowerCase();
+    if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'mcp', 'access-control'].includes(hash)) {
+      return hash;
+    }
+    return 'overview';
+  });
   const [dateRange, setDateRange] = useState('May 12 – May 18, 2024');
 
   // Modal & Drawer states
@@ -32,6 +39,30 @@ export default function App() {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [simulationRec, setSimulationRec] = useState(null);
+
+  // Sync state with hash on mount and hashchange event
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'mcp', 'access-control'].includes(hash)) {
+        setActiveTab(hash);
+      } else if (hash === 'login' || hash === 'signin' || hash === 'signup' || hash === 'register') {
+        if (!user) {
+          // Stay in auth view with corresponding mode
+        }
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [user]);
+
+  const changeTab = (tab) => {
+    setActiveTab(tab);
+    window.location.hash = '#' + tab;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Check Supabase session on startup
   useEffect(() => {
@@ -53,10 +84,12 @@ export default function App() {
   const handleSignOut = async () => {
     await signOutUser();
     setUser(null);
+    window.location.hash = '#login';
   };
 
   const handleAuthSuccess = (authedUser) => {
     setUser(authedUser);
+    window.location.hash = '#overview';
   };
 
   const getHeaderProps = () => {
@@ -128,8 +161,12 @@ export default function App() {
 
   // If user is not authenticated, show Signup / Create Workspace screen first!
   if (!user) {
+    const currentHash = window.location.hash.replace('#', '').toLowerCase();
+    const mode = (currentHash === 'login' || currentHash === 'signin') ? 'login' : 'signup';
+
     return (
       <AuthView
+        initialMode={mode}
         onAuthSuccess={handleAuthSuccess}
         onBypassDemo={() => {
           setUser({
@@ -141,6 +178,7 @@ export default function App() {
               role: 'Admin'
             }
           });
+          window.location.hash = '#overview';
         }}
       />
     );
@@ -154,13 +192,13 @@ export default function App() {
       {/* Left Navigation Sidebar */}
       <Sidebar
         activeTab={activeTab}
-        onTabChange={(tab) => {
-          setActiveTab(tab);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
+        onTabChange={(tab) => changeTab(tab)}
         user={user}
         onSignOut={handleSignOut}
-        onOpenAuth={() => setUser(null)}
+        onOpenAuth={() => {
+          setUser(null);
+          window.location.hash = '#login';
+        }}
       />
 
       {/* Main Content Area */}
@@ -181,21 +219,21 @@ export default function App() {
         <main style={{ flex: 1, position: 'relative', zIndex: 10 }}>
           {activeTab === 'overview' && (
             <OverviewView
-              onNavigate={(tab) => setActiveTab(tab)}
+              onNavigate={(tab) => changeTab(tab)}
               onOpenRecommendationModal={(rec) => setSimulationRec(rec)}
             />
           )}
 
           {activeTab === 'workspaces' && (
             <WorkspacesView
-              onNavigate={(tab) => setActiveTab(tab)}
+              onNavigate={(tab) => changeTab(tab)}
               onOpenInviteModal={() => setIsInviteModalOpen(true)}
             />
           )}
 
           {activeTab === 'datasources' && (
             <DataSourcesView
-              onNavigate={(tab) => setActiveTab(tab)}
+              onNavigate={(tab) => changeTab(tab)}
             />
           )}
 
@@ -217,6 +255,12 @@ export default function App() {
             <DashboardView
               onNavigate={(tab) => setActiveTab(tab)}
             />
+          )}
+
+          {activeTab === 'mcp' && (
+            <div style={{ padding: '0 32px 32px 32px' }}>
+              <BIIntegrationsPanel />
+            </div>
           )}
 
           {activeTab === 'access-control' && (

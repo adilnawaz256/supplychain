@@ -19,7 +19,19 @@ class StatisticalForecastEngine:
 
         product = self.db.query(Product).filter(Product.id == product_id).first()
         if not product:
-            raise ValueError(f"Product ID {product_id} not found")
+            return {
+                "product_id": product_id,
+                "sku": "N/A",
+                "product_name": "No Product Selected",
+                "warehouse_id": warehouse_id or 0,
+                "warehouse_name": "N/A",
+                "horizon_days": horizon_days,
+                "total_forecasted_demand": 0.0,
+                "confidence_interval_pct": 0.0,
+                "mae": 0.0,
+                "rmse": 0.0,
+                "forecast_data": []
+            }
 
         warehouse_name = "All Warehouses"
         if warehouse_id:

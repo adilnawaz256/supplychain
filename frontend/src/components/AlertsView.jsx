@@ -18,13 +18,14 @@ import { API_BASE_URL } from '../config/api';
 export default function AlertsView() {
   const [teamWorkspace, setTeamWorkspace] = useState('Global Supply Chain Enterprise');
   const [teamChannel, setTeamChannel] = useState('alerts-and-insights');
-  const [webhookUrl, setWebhookUrl] = useState('https://outlook.office.com/webhook/wisualyst-supplychain-channel');
+  const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('wisualyst_teams_webhook') || '');
   const [pipelineFailures, setPipelineFailures] = useState(true);
   const [dataQualityIssues, setDataQualityIssues] = useState(true);
   const [schemaChanges, setSchemaChanges] = useState(true);
   const [aiRecommendations, setAiRecommendations] = useState(true);
   const [testSent, setTestSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [poIssued, setPoIssued] = useState(false);
 
   const [riskAlerts, setRiskAlerts] = useState([]);
@@ -46,8 +47,15 @@ export default function AlertsView() {
     loadAlerts();
   }, []);
 
+  const handleSaveWebhook = () => {
+    localStorage.setItem('wisualyst_teams_webhook', webhookUrl);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
   const handleSendTestMessage = async () => {
     setIsSending(true);
+    localStorage.setItem('wisualyst_teams_webhook', webhookUrl);
     try {
       await fetch(`${API_BASE_URL}/api/teams/webhook/test`, {
         method: 'POST',
@@ -62,10 +70,7 @@ export default function AlertsView() {
         setTestSent(false);
       }, 4000);
     } catch (err) {
-      setTestSent(true);
-      setTimeout(() => {
-        setTestSent(false);
-      }, 4000);
+      console.error('Error sending test message:', err);
     } finally {
       setIsSending(false);
     }
@@ -100,12 +105,17 @@ export default function AlertsView() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Microsoft Teams</span>
                 <span style={{
-                  fontSize: '0.7rem', fontWeight: 600, color: '#059669',
-                  backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '999px',
+                  fontSize: '0.7rem', fontWeight: 600,
+                  color: webhookUrl.trim() ? '#059669' : '#d97706',
+                  backgroundColor: webhookUrl.trim() ? '#ecfdf5' : '#fffbe8',
+                  padding: '2px 8px', borderRadius: '999px',
                   display: 'flex', alignItems: 'center', gap: '4px'
                 }}>
-                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981' }} />
-                  Connected
+                  <span style={{
+                    width: '5px', height: '5px', borderRadius: '50%',
+                    backgroundColor: webhookUrl.trim() ? '#10b981' : '#f59e0b'
+                  }} />
+                  {webhookUrl.trim() ? 'Connected' : 'Not Connected'}
                 </span>
               </div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
@@ -216,13 +226,22 @@ export default function AlertsView() {
           {/* Action Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
             <button
+              onClick={handleSaveWebhook}
+              className="btn-secondary"
+              style={{ flex: 1, padding: '10px', fontSize: '0.85rem' }}
+            >
+              <Check size={15} color={saved ? '#10b981' : '#64748b'} />
+              <span>{saved ? '✓ Webhook Saved!' : 'Save Webhook URL'}</span>
+            </button>
+
+            <button
               onClick={handleSendTestMessage}
               disabled={isSending}
               className="btn-primary"
               style={{ flex: 1, padding: '10px', fontSize: '0.85rem' }}
             >
               <Send size={15} />
-              <span>{isSending ? 'Sending...' : testSent ? '✓ Adaptive Card Sent to Teams!' : 'Send Test Card to Teams'}</span>
+              <span>{isSending ? 'Sending...' : testSent ? '✓ Card Sent to Teams!' : 'Send Test Card to Teams'}</span>
             </button>
           </div>
 

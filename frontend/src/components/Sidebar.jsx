@@ -13,7 +13,8 @@ import {
   User,
   Settings,
   Sparkles,
-  Layers
+  Layers,
+  Terminal
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpenAuth }) {
@@ -29,6 +30,7 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
     { id: 'recommendations', label: 'Recommendations', icon: FileText },
     { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'mcp', label: 'MCP Server Bridge', icon: Terminal },
   ];
 
   const userInitials = user?.user_metadata?.full_name
@@ -63,27 +65,35 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
         padding: '24px 20px 20px 20px',
         display: 'flex',
         alignItems: 'center',
-        gap: '12px'
+        gap: '10px'
       }}>
-        {/* Stylized Gradient 'W' Logo */}
-        <div style={{
-          width: '38px',
-          height: '38px',
-          borderRadius: '10px',
-          background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M4 6L8.5 18L12 9.5L15.5 18L20 6" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
+        {/* Exact Wisualyst 'W' Logo */}
+        <svg width="36" height="36" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="w_grad_purple_blue" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#8b5cf6" />
+              <stop offset="60%" stopColor="#3b82f6" />
+            </linearGradient>
+            <linearGradient id="w_grad_cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#38bdf8" />
+            </linearGradient>
+          </defs>
+          {/* Main W body */}
+          <path
+            d="M 14 20 L 34 80 L 52 38 L 68 80 L 86 32"
+            stroke="url(#w_grad_purple_blue)"
+            strokeWidth="15"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Top Right Accent Dot */}
+          <circle cx="88" cy="18" r="8" fill="#38bdf8" />
+        </svg>
 
         <div>
           <span style={{
-            fontSize: '1.35rem',
+            fontSize: '1.4rem',
             fontWeight: 800,
             letterSpacing: '-0.5px',
             color: '#0f172a',

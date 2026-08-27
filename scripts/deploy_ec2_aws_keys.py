@@ -68,10 +68,13 @@ def deploy_using_aws_credentials(instance_id: str = "i-008e760e264afb4b9"):
         ssh.connect(public_ip, username='ubuntu', pkey=key, timeout=15)
         print("✅ SSH Connection Established to EC2!")
 
-        # Upload updated requirements.txt and project files via SFTP
-        print("🔄 Uploading updated requirements.txt to EC2...")
+        # Upload updated requirements.txt and .env configuration via SFTP
+        print("🔄 Uploading updated .env and requirements.txt to EC2...")
         ssh.exec_command("sudo mkdir -p /home/ubuntu/app && sudo chown -R ubuntu:ubuntu /home/ubuntu/app")
         sftp = ssh.open_sftp()
+        if os.path.exists(".env"):
+            sftp.put(os.path.abspath(".env"), "/home/ubuntu/app/.env")
+            print("✅ Uploaded .env with database credentials to EC2")
         sftp.put(os.path.abspath("requirements.txt"), "/home/ubuntu/app/requirements.txt")
         sftp.close()
 

@@ -18,8 +18,8 @@ import {
 import { signUpUser, signInUser, signInWithProvider } from '../config/supabase';
 import { API_BASE_URL } from '../config/api';
 
-export default function AuthView({ onAuthSuccess, onBypassDemo }) {
-  const [isSignUp, setIsSignUp] = useState(true);
+export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'signup' }) {
+  const [isSignUp, setIsSignUp] = useState(() => initialMode === 'signup' || window.location.hash === '#signup');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -203,21 +203,23 @@ export default function AuthView({ onAuthSuccess, onBypassDemo }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.28)'
-            }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M4 6L8.5 18L12 9.5L15.5 18L20 6" stroke="#ffffff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
+            <svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="auth_w_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#8b5cf6" />
+                  <stop offset="60%" stopColor="#3b82f6" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M 14 20 L 34 80 L 52 38 L 68 80 L 86 32"
+                stroke="url(#auth_w_grad)"
+                strokeWidth="15"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="88" cy="18" r="8" fill="#38bdf8" />
+            </svg>
+            <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>
               Wisualyst
             </span>
           </div>
@@ -654,7 +656,9 @@ export default function AuthView({ onAuthSuccess, onBypassDemo }) {
             <button
               type="button"
               onClick={() => {
-                setIsSignUp(!isSignUp);
+                const nextMode = !isSignUp;
+                setIsSignUp(nextMode);
+                window.location.hash = nextMode ? '#signup' : '#login';
                 setErrorMsg('');
                 setSuccessMsg('');
               }}

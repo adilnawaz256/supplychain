@@ -12,12 +12,14 @@ if "?" in db_url and "sqlite" not in db_url:
     params = [p for p in query_params.split("&") if not p.startswith("pgbouncer")]
     db_url = base_url + ("?" + "&".join(params) if params else "")
 
+from sqlalchemy.pool import NullPool
+
 if db_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
     engine = create_engine(db_url, connect_args=connect_args, echo=False)
 else:
     sync_url = db_url.replace("+asyncpg", "") if "+asyncpg" in db_url else db_url
-    engine = create_engine(sync_url, echo=False, pool_pre_ping=True)
+    engine = create_engine(sync_url, echo=False, pool_pre_ping=True, poolclass=NullPool)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

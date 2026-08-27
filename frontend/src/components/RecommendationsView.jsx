@@ -46,6 +46,7 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
         body: JSON.stringify({
           type: 'AI_RECOMMENDATION',
           channel: '#alerts-and-insights',
+          webhook_url: localStorage.getItem('wisualyst_teams_webhook') || '',
           data: recObj || { recommendation_id: id, title: 'Approved Prescriptive Action', financial_impact: '$15,000' }
         })
       });
