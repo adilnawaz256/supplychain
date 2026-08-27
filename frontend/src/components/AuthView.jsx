@@ -132,12 +132,10 @@ export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'l
     }
   };
 
-  const readinessScore = summary?.overall_readiness_pct ?? 100;
-  const criticalLines = summary?.stockout_critical_count ?? 19;
-  const otifPct = summary?.avg_supplier_otif ?? 92.5;
-  const totalValueFormatted = summary?.total_inventory_value
-    ? `$${(summary.total_inventory_value / 1000000).toFixed(2)}M`
-    : '$1.59M';
+  const readinessScore = 100;
+  const criticalLines = 0;
+  const otifPct = 98.5;
+  const totalValueFormatted = '$0.00M';
 
   return (
     <div style={{
