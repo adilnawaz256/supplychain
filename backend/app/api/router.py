@@ -462,27 +462,176 @@ def ingest_wms(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db
     connector = MockWMSConnector()
     return connector.sync_wms_inventory(payload, db)
 
-# --- Mock ERP REST Endpoints ---
-@router.get("/mock-erp/products", tags=["Mock ERP External API"])
-def mock_erp_products():
-    return [
-        {"sku": "SKU-ERP-901", "name": "Heavy Duty Solar Inverter 5kW", "unit_cost": 450.0, "selling_price": 780.0, "lead_time_days": 14},
-        {"sku": "SKU-ERP-902", "name": "Lithium Storage Cell 3.2V 100Ah", "unit_cost": 35.0, "selling_price": 65.0, "lead_time_days": 10}
-    ]
+# --- Access Control Endpoints (Dynamic Database Models) ---
+from backend.app.models.models import Role, WorkspaceMember, PermissionSetting, AuditLog
 
-@router.get("/mock-erp/suppliers", tags=["Mock ERP External API"])
-def mock_erp_suppliers():
-    return [
-        {"code": "SUP-ERP-01", "name": "SolarTech Energy Systems", "contact_email": "b2b@solartech.com", "rating": 4.7, "lead_time_days": 12}
-    ]
+@router.get("/api/access-control/roles", tags=["Access Control"])
+def get_access_roles(db: Session = Depends(get_db)):
+    db_roles = db.query(Role).all()
+    if not db_roles:
+        return []
+    
+    result = []
+    for r in db_roles:
+        # Count workspace members assigned to this role
+        user_count = db.query(WorkspaceMember).filter(WorkspaceMember.role.ilike(f"%{r.name}%")).count()
+        result.append({
+            "id": r.role_key,
+            "name": r.name,
+            "desc": r.description or "",
+            "usersCount": user_count,
+            "scope": r.scope or "Full Access",
+            "scopeColor": r.scope_color or "#7c3aed",
+            "scopeBg": r.scope_bg or "#f5f3ff",
+            "lastModified": r.updated_at.strftime("%b %d, %Y") if r.updated_at else "Today",
+            "author": r.author or "System"
+        })
+    return result
 
-# --- Mock WMS REST Endpoints ---
-@router.get("/mock-wms/inventory", tags=["Mock WMS External API"])
-def mock_wms_inventory():
+@router.post("/api/access-control/roles", tags=["Access Control"])
+def create_role(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    name = payload.get("name", "Custom Role")
+    desc = payload.get("description", "Custom user role")
+    role_key = name.lower().replace(" ", "-")
+    
+    existing = db.query(Role).filter(Role.role_key == role_key).first()
+    if existing:
+        return {"status": "EXISTS", "message": f"Role '{name}' already exists.", "role": {
+            "id": existing.role_key, "name": existing.name, "desc": existing.description, "usersCount": 0
+        }}
+
+    new_role = Role(
+        role_key=role_key,
+        name=name,
+        description=desc,
+        scope=payload.get("scope", "Custom Scope"),
+        scope_color="#2563eb",
+        scope_bg="#eff6ff",
+        author="Admin"
+    )
+    db.add(new_role)
+    db.commit()
+    db.refresh(new_role)
+    
     return {
-        "warehouse_code": "WH-BLR-01",
-        "inventory_levels": [
-            {"sku": "SKU-ELEC-101", "current_stock": 12, "allocated_stock": 3},
-            {"sku": "SKU-IND-201", "current_stock": 8, "allocated_stock": 2}
-        ]
+        "status": "SUCCESS",
+        "message": f"Role '{name}' created successfully in database!",
+        "role": {
+            "id": new_role.role_key,
+            "name": new_role.name,
+            "desc": new_role.description,
+            "usersCount": 0,
+            "scope": new_role.scope,
+            "scopeColor": new_role.scope_color,
+            "scopeBg": new_role.scope_bg,
+            "lastModified": new_role.updated_at.strftime("%b %d, %Y") if new_role.updated_at else "Today",
+            "author": new_role.author
+        }
     }
+
+@router.get("/api/access-control/users", tags=["Access Control"])
+def get_access_users(db: Session = Depends(get_db)):
+    members = db.query(WorkspaceMember).all()
+    result = []
+    for m in members:
+        result.append({
+            "id": m.id,
+            "name": m.name,
+            "email": m.email,
+            "role": m.role,
+            "roleId": m.role.lower().replace(" ", "-"),
+            "status": m.status or "Active",
+            "lastActive": "Active Today",
+            "avatarBg": m.color or "#2563eb"
+        })
+    return result
+
+@router.post("/api/access-control/users/invite", tags=["Access Control"])
+def invite_user(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    email = payload.get("email", "").strip()
+    role = payload.get("role", "Viewer")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+        
+    name = email.split("@")[0].title().replace(".", " ")
+    initials = "".join([part[0] for part in name.split()])[:2].upper()
+    
+    existing = db.query(WorkspaceMember).filter(WorkspaceMember.email == email).first()
+    if existing:
+        existing.role = role
+        db.commit()
+        return {"status": "UPDATED", "message": f"Updated role for {email} to {role}!", "invited_user": {
+            "id": existing.id, "name": existing.name, "email": existing.email, "role": existing.role, "status": existing.status
+        }}
+
+    new_mem = WorkspaceMember(
+        name=name,
+        email=email,
+        role=role,
+        status="Active",
+        initials=initials,
+        color="#2563eb",
+        bg="#eff6ff"
+    )
+    db.add(new_mem)
+    db.commit()
+    db.refresh(new_mem)
+    
+    return {
+        "status": "SUCCESS",
+        "message": f"Invitation link generated and saved to database for {email} as {role}!",
+        "invited_user": {
+            "id": new_mem.id,
+            "name": new_mem.name,
+            "email": new_mem.email,
+            "role": new_mem.role,
+            "status": new_mem.status,
+            "lastActive": "Invited Today",
+            "avatarBg": new_mem.color
+        }
+    }
+
+@router.delete("/api/access-control/users/{user_id}", tags=["Access Control"])
+def revoke_user_access(user_id: int, db: Session = Depends(get_db)):
+    mem = db.query(WorkspaceMember).filter(WorkspaceMember.id == user_id).first()
+    if mem:
+        db.delete(mem)
+        db.commit()
+        return {"status": "SUCCESS", "message": f"User #{user_id} removed from database."}
+    return {"status": "NOT_FOUND", "message": "User record not found."}
+
+@router.get("/api/access-control/permissions", tags=["Access Control"])
+def get_permissions_matrix(db: Session = Depends(get_db)):
+    perms = db.query(PermissionSetting).all()
+    if not perms:
+        return []
+    return [
+        {
+            "module": p.module_name,
+            "key": p.module_key,
+            "admin": bool(p.admin_access),
+            "data_engineer": bool(p.de_access),
+            "data_analyst": bool(p.da_access),
+            "ops_manager": bool(p.om_access),
+            "viewer": bool(p.viewer_access)
+        } for p in perms
+    ]
+
+@router.get("/api/access-control/audit-logs", tags=["Access Control"])
+def get_audit_logs(db: Session = Depends(get_db)):
+    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()
+    if not logs:
+        return []
+    return [
+        {
+            "id": f"aud-{l.id}",
+            "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "user": l.user_name,
+            "email": l.user_email,
+            "action": l.action,
+            "category": l.category or "General",
+            "details": l.details or "",
+            "ip": l.ip_address or "127.0.0.1",
+            "severity": l.severity or "INFO"
+        } for l in logs
+    ]

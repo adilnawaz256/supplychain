@@ -290,7 +290,33 @@ class WorkspaceMember(Base):
     name = Column(String(100), nullable=False)
     email = Column(String(150), nullable=False, unique=True)
     role = Column(String(50), default="Viewer")
+    status = Column(String(20), default="Active")
     initials = Column(String(10), default="U")
     color = Column(String(20), default="#2563eb")
     bg = Column(String(20), default="#eff6ff")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_name = Column(String(100), nullable=False)
+    user_email = Column(String(150), nullable=False)
+    action = Column(String(150), nullable=False)
+    category = Column(String(100), default="General")
+    details = Column(Text, nullable=True)
+    ip_address = Column(String(50), default="127.0.0.1")
+    severity = Column(String(20), default="INFO")
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+class PermissionSetting(Base):
+    __tablename__ = "permission_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_key = Column(String(50), nullable=False, unique=True)
+    module_name = Column(String(150), nullable=False)
+    admin_access = Column(Integer, default=1)
+    de_access = Column(Integer, default=1)
+    da_access = Column(Integer, default=1)
+    om_access = Column(Integer, default=1)
+    viewer_access = Column(Integer, default=0)

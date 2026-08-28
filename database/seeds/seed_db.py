@@ -334,6 +334,58 @@ def seed_database(db: Session):
         db.add(rs)
     db.commit()
 
+    # 11. Access Control Roles, Members, Permissions & Audit Logs
+    from backend.app.models.models import Role, WorkspaceMember, PermissionSetting, AuditLog
+
+    roles_seed = [
+        ("admin", "Admin", "Full access to all features, settings, data pipelines, and user management.", "Full Access", "#7c3aed", "#f5f3ff"),
+        ("de", "Data Engineer", "Manage data sources, database connectors, canonical mappings, and ETL discovery.", "Data & Engine Access", "#2563eb", "#eff6ff"),
+        ("da", "Data Analyst", "Analyze inventory metrics, demand forecasts, create custom BI reports, and view insights.", "Read & Analyze", "#059669", "#ecfdf5"),
+        ("om", "Operations Manager", "Monitor stockout KPIs, manage alerts, approve PO recommendations, and execute orders.", "Limited Access", "#d97706", "#fffbeb"),
+        ("viewer", "Viewer", "View dashboards, alerts, and executive reports with read-only permissions.", "Read Only", "#475569", "#f1f5f9")
+    ]
+    for r_key, r_name, r_desc, r_scope, r_color, r_bg in roles_seed:
+        role_item = Role(role_key=r_key, name=r_name, description=r_desc, scope=r_scope, scope_color=r_color, scope_bg=r_bg, author="System")
+        db.add(role_item)
+    db.commit()
+
+    members_seed = [
+        ("Adil Nawaz", "adilnawaz256@outlook.com", "Admin", "Active", "AN", "#7c3aed", "#f5f3ff"),
+        ("Sarah Jenkins", "s.jenkins@wisualyst.com", "Data Engineer", "Active", "SJ", "#2563eb", "#eff6ff"),
+        ("David Chen", "d.chen@wisualyst.com", "Data Analyst", "Active", "DC", "#059669", "#ecfdf5"),
+        ("Marcus Vance", "m.vance@wisualyst.com", "Operations Manager", "Active", "MV", "#d97706", "#fffbeb"),
+        ("Elena Rostova", "e.rostova@wisualyst.com", "Viewer", "Inactive", "ER", "#64748b", "#f1f5f9")
+    ]
+    for m_name, m_email, m_role, m_status, m_init, m_color, m_bg in members_seed:
+        mem = WorkspaceMember(name=m_name, email=m_email, role=m_role, status=m_status, initials=m_init, color=m_color, bg=m_bg)
+        db.add(mem)
+    db.commit()
+
+    perms_seed = [
+        ("overview", "Overview & Executive Control Tower", 1, 1, 1, 1, 1),
+        ("workspaces", "Workspaces & Multi-Tenant Setup", 1, 1, 0, 0, 0),
+        ("datasources", "Data Sources & PostgreSQL Pipeline", 1, 1, 0, 0, 0),
+        ("intelligence", "Intelligence & Forecasting Engines", 1, 1, 1, 1, 1),
+        ("recommendations", "Prescriptive Recommendations & PO Dispatch", 1, 0, 1, 1, 0),
+        ("access_control", "Access Control & Security Governance", 1, 0, 0, 0, 0)
+    ]
+    for p_key, p_name, p_admin, p_de, p_da, p_om, p_view in perms_seed:
+        perm = PermissionSetting(module_key=p_key, module_name=p_name, admin_access=p_admin, de_access=p_de, da_access=p_da, om_access=p_om, viewer_access=p_view)
+        db.add(perm)
+    db.commit()
+
+    logs_seed = [
+        ("Adil Nawaz", "adilnawaz256@outlook.com", "PostgreSQL Connected", "Data Source", "Connected database-1.c90s8acs6gvg.eu-west-2.rds.amazonaws.com (50 products mapped)", "3.109.14.208", "SUCCESS"),
+        ("Adil Nawaz", "adilnawaz256@outlook.com", "User Login", "Authentication", "User signed into Wisualyst Control Tower", "3.109.14.208", "INFO"),
+        ("Marcus Vance", "m.vance@wisualyst.com", "Emergency PO Approved", "Procurement", "Dispatched Purchase Order PO-2026-8001 for SKU-ELEC-101 (500 units)", "194.156.24.12", "WARNING"),
+        ("Sarah Jenkins", "s.jenkins@wisualyst.com", "Canonical Field Mapped", "Schema", "Mapped source field ItemCode -> canonical field sku", "82.165.41.90", "SUCCESS"),
+        ("System Auto-Engine", "system@wisualyst.com", "100/100 Readiness Calculated", "Data Quality", "Automated pipeline validated 100/100 coverage index", "127.0.0.1", "SUCCESS")
+    ]
+    for l_user, l_email, l_act, l_cat, l_det, l_ip, l_sev in logs_seed:
+        audit = AuditLog(user_name=l_user, user_email=l_email, action=l_act, category=l_cat, details=l_det, ip_address=l_ip, severity=l_sev)
+        db.add(audit)
+    db.commit()
+
     print("Database seeding completed successfully!")
 
 if __name__ == "__main__":
