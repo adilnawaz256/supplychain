@@ -192,19 +192,21 @@ class MicrosoftTeamsNotifier:
             if chat_id:
                 raw_attachments = payload.get("payload", {}).get("attachments", [])
                 formatted_attachments = []
+                attachment_tags = ""
                 for idx, att in enumerate(raw_attachments):
                     att_copy = dict(att)
-                    if "id" not in att_copy or not att_copy["id"]:
-                        att_copy["id"] = f"card-attachment-{idx+1}"
+                    att_id = f"card-attachment-{idx+1}"
+                    att_copy["id"] = att_id
                     if isinstance(att_copy.get("content"), dict):
                         att_copy["content"] = json.dumps(att_copy["content"])
                     formatted_attachments.append(att_copy)
+                    attachment_tags += f'<attachment id="{att_id}"></attachment>'
 
                 msg_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
                 msg_body = json.dumps({
                     "body": {
                         "contentType": "html",
-                        "content": "<p><b>🚨 Wisualyst Supply Chain Alert</b></p>"
+                        "content": f"<p><b>🚨 Wisualyst Supply Chain Alert</b></p>{attachment_tags}"
                     },
                     "attachments": formatted_attachments
                 }).encode("utf-8")
