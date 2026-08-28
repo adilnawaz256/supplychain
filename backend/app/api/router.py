@@ -69,7 +69,8 @@ from fastapi.responses import RedirectResponse
 @router.get("/api/auth/microsoft/login", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_login():
     client_id = os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
-    tenant_id = os.environ.get("AZURE_TENANT_ID", "common")
+    # Multi-tenant authority allows ANY Microsoft user/organization account to sign in
+    tenant_authority = "common"
     redirect_uri = os.environ.get("AZURE_REDIRECT_URI", "https://app.wisualyst.com/api/auth/callback/microsoft")
     scope = "openid profile email User.Read ChannelMessage.Send ChatMessage.Send"
     
@@ -81,7 +82,7 @@ def microsoft_oauth_login():
         "scope": scope,
         "state": "wisualyst_teams_auth"
     }
-    url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize?" + urllib.parse.urlencode(params)
+    url = f"https://login.microsoftonline.com/{tenant_authority}/oauth2/v2.0/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(url=url)
 
 @router.get("/api/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
