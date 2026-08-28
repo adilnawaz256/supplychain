@@ -24,6 +24,9 @@ from backend.app.services.teams_notifier import MicrosoftTeamsNotifier
 router = APIRouter()
 teams_notifier = MicrosoftTeamsNotifier()
 
+# In-memory store for active Microsoft OAuth session
+ACTIVE_MICROSOFT_SESSIONS: Dict[str, Any] = {}
+
 # --- Microsoft Teams Integration Endpoints ---
 @router.post("/api/teams/webhook/test", tags=["Microsoft Teams Integration"])
 def send_teams_test_card(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
@@ -57,7 +60,20 @@ def send_teams_notification(payload: Dict[str, Any] = Body(...)):
         card_msg = teams_notifier.build_recommendation_card(alert_data, channel=channel)
     else:
         card_msg = teams_notifier.build_stockout_alert_card(alert_data, channel=channel)
-        
+
+    # If logged in via 1-Click OAuth, dispatch 1-on-1 Teams direct message via Microsoft Graph API
+    session = ACTIVE_MICROSOFT_SESSIONS.get("latest")
+    if session and session.get("access_token"):
+        try:
+            graph_res = teams_notifier.send_graph_chat_message(
+                access_token=session["access_token"],
+                user_id=session.get("user_id"),
+                payload=card_msg
+            )
+            card_msg["graph_status"] = graph_res
+        except Exception as e:
+            print("Graph chat dispatch error note:", e)
+
     result = teams_notifier.send_webhook_notification(webhook_url, card_msg)
     return {"status": "SUCCESS", "detail": result}
 
@@ -70,10 +86,9 @@ from fastapi.responses import RedirectResponse
 @router.get("/auth/microsoft/login", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_login():
     client_id = os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
-    # Multi-tenant authority allows ANY Microsoft user/organization account to sign in
     tenant_authority = "common"
     redirect_uri = os.environ.get("AZURE_REDIRECT_URI", "https://app.wisualyst.com/api/auth/callback/microsoft")
-    scope = "openid profile email User.Read ChannelMessage.Send ChatMessage.Send"
+    scope = "openid profile email User.Read ChannelMessage.Send ChatMessage.Send Chat.ReadWrite"
     
     params = {
         "client_id": client_id,
@@ -101,7 +116,6 @@ def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = 
     
     user_email = "user@microsoft.com"
     try:
-        # Exchange authorization code for Microsoft Graph token using built-in urllib
         token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         post_data = urllib.parse.urlencode({
             "client_id": client_id,
@@ -126,6 +140,14 @@ def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = 
                     if graph_res.status == 200:
                         me_data = json.loads(graph_res.read().decode("utf-8"))
                         user_email = me_data.get("mail") or me_data.get("userPrincipalName") or me_data.get("displayName") or "user@microsoft.com"
+                        
+                        # Store active OAuth session
+                        ACTIVE_MICROSOFT_SESSIONS["latest"] = {
+                            "access_token": access_token,
+                            "user_email": user_email,
+                            "user_id": me_data.get("id"),
+                            "display_name": me_data.get("displayName")
+                        }
     except Exception as e:
         print("Microsoft Graph token exchange note:", e)
 
@@ -134,6 +156,14 @@ def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = 
 
 @router.get("/api/auth/microsoft/status", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_status():
+    session = ACTIVE_MICROSOFT_SESSIONS.get("latest")
+    if session:
+        return {
+            "connected": True,
+            "account": session.get("user_email"),
+            "display_name": session.get("display_name"),
+            "client_id": os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
+        }
     return {
         "connected": False,
         "account": None,
