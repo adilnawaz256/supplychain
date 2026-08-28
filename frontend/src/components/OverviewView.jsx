@@ -110,6 +110,17 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
   }, [selectedProductId]);
 
   // Derived real KPI metrics from backend summary
+  const hasConnectedSources = (() => {
+    try {
+      const saved = localStorage.getItem('wisualyst_connected_sources');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Object.values(parsed).some(Boolean)) return true;
+      }
+    } catch (e) {}
+    return products.length > 0;
+  })();
+
   const totalProducts = products.length;
   const readinessScore = summary?.overall_readiness_pct ?? 0;
   const totalItems = summary?.total_inventory_items || 0;
@@ -150,7 +161,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
     <div style={{ padding: '0 32px 32px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Fresh Clean Workspace Empty State Banner */}
-      {totalProducts === 0 && (
+      {!hasConnectedSources && (
         <div style={{
           padding: '20px 24px',
           borderRadius: '16px',
