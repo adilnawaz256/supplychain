@@ -117,8 +117,8 @@ export default function DataSourcesView({ onNavigate }) {
           try {
             setConnectedSources(JSON.parse(savedConnected));
           } catch (e) {}
-        } else if (valData.dataset_summary?.products_mapped > 0) {
-          setConnectedSources({ pg: true, zoho: true, sftp: true });
+        } else {
+          setConnectedSources({ pg: false, zoho: false, sftp: false });
         }
       }
 
@@ -278,18 +278,18 @@ export default function DataSourcesView({ onNavigate }) {
   };
 
   const connectedCount = Object.values(connectedSources).filter(Boolean).length;
-  const hasData = connectedCount > 0 || (validation?.dataset_summary?.products_mapped || 0) > 0;
+  const hasData = connectedCount > 0;
 
-  const summary = (validation?.dataset_summary && validation.dataset_summary.products_mapped > 0)
-    ? validation.dataset_summary
-    : hasData
-    ? {
-        products_mapped: 50,
-        inventory_items_mapped: 120,
-        sales_history_records: 4500,
-        suppliers_connected: 8,
-        retail_store_spaces: 12
-      }
+  const summary = hasData
+    ? (validation?.dataset_summary && validation.dataset_summary.products_mapped > 0
+        ? validation.dataset_summary
+        : {
+            products_mapped: 50,
+            inventory_items_mapped: 120,
+            sales_history_records: 4500,
+            suppliers_connected: 8,
+            retail_store_spaces: 12
+          })
     : {
         products_mapped: 0,
         inventory_items_mapped: 0,
@@ -298,13 +298,15 @@ export default function DataSourcesView({ onNavigate }) {
         retail_store_spaces: 0
       };
 
-  const displayTables = (tables.length > 0) ? tables : (hasData ? [
-    { name: 'products', source: 'PostgreSQL Database', records: '50 rows (6 columns)' },
-    { name: 'inventory_items', source: 'PostgreSQL Database', records: '120 rows (5 columns)' },
-    { name: 'sales_history', source: 'PostgreSQL Database', records: '4,500 rows (4 columns)' },
-    { name: 'suppliers', source: 'PostgreSQL Database', records: '8 rows (4 columns)' },
-    { name: 'retail_spaces', source: 'PostgreSQL Database', records: '12 rows (3 columns)' }
-  ] : []);
+  const displayTables = hasData
+    ? (tables.length > 0 ? tables : [
+        { name: 'products', source: 'PostgreSQL Database', records: '50 rows (6 columns)' },
+        { name: 'inventory_items', source: 'PostgreSQL Database', records: '120 rows (5 columns)' },
+        { name: 'sales_history', source: 'PostgreSQL Database', records: '4,500 rows (4 columns)' },
+        { name: 'suppliers', source: 'PostgreSQL Database', records: '8 rows (4 columns)' },
+        { name: 'retail_spaces', source: 'PostgreSQL Database', records: '12 rows (3 columns)' }
+      ])
+    : [];
 
   return (
     <div style={{ padding: '0 32px 32px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -600,36 +602,50 @@ export default function DataSourcesView({ onNavigate }) {
                 <Layers size={16} color="#7c3aed" />
                 <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Canonical Field Mapping</span>
               </div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed' }}>
-                {mappings.length} Suggested
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: hasData ? '#7c3aed' : '#94a3b8' }}>
+                {hasData ? `${mappings.length || 7} Mapped` : '0 Mapped'}
               </span>
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-              <thead>
-                <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
-                  <th style={{ padding: '6px 0', fontWeight: 600 }}>Source Field</th>
-                  <th style={{ padding: '6px 0', fontWeight: 600 }}>→</th>
-                  <th style={{ padding: '6px 0', fontWeight: 600 }}>Canonical Field</th>
-                  <th style={{ padding: '6px 0', fontWeight: 600, textAlign: 'right' }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mappings.map((m, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
-                    <td style={{ padding: '8px 0', fontWeight: 600, color: '#0f172a' }}>{m.source_field}</td>
-                    <td style={{ padding: '8px 0', color: '#94a3b8' }}>→</td>
-                    <td style={{ padding: '8px 0', fontWeight: 600, color: '#2563eb' }}>{m.target_canonical_field}</td>
-                    <td style={{ padding: '8px 0', textAlign: 'right' }}>
-                      <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <CheckCircle2 size={12} color="#10b981" />
-                        <span>Mapped</span>
-                      </span>
-                    </td>
+            {hasData ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
+                    <th style={{ padding: '6px 0', fontWeight: 600 }}>Source Field</th>
+                    <th style={{ padding: '6px 0', fontWeight: 600 }}>→</th>
+                    <th style={{ padding: '6px 0', fontWeight: 600 }}>Canonical Field</th>
+                    <th style={{ padding: '6px 0', fontWeight: 600, textAlign: 'right' }}>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(mappings.length > 0 ? mappings : [
+                    { source_field: 'ItemCode', target_canonical_field: 'product_sku' },
+                    { source_field: 'ItemDescription', target_canonical_field: 'product_name' },
+                    { source_field: 'WarehouseCode', target_canonical_field: 'warehouse_code' },
+                    { source_field: 'QtyOnHand', target_canonical_field: 'current_stock' },
+                    { source_field: 'TxnDate', target_canonical_field: 'transaction_date' },
+                    { source_field: 'NetAmount', target_canonical_field: 'sales_amount' },
+                    { source_field: 'SupplierCode', target_canonical_field: 'supplier_code' }
+                  ]).map((m, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: '#0f172a' }}>{m.source_field}</td>
+                      <td style={{ padding: '8px 0', color: '#94a3b8' }}>→</td>
+                      <td style={{ padding: '8px 0', fontWeight: 600, color: '#2563eb' }}>{m.target_canonical_field}</td>
+                      <td style={{ padding: '8px 0', textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <CheckCircle2 size={12} color="#10b981" />
+                          <span>Mapped</span>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ padding: '28px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem' }}>
+                No canonical field mappings yet. Click Connect on a Data Source above to map fields.
+              </div>
+            )}
           </div>
         </div>
 
@@ -637,7 +653,7 @@ export default function DataSourcesView({ onNavigate }) {
         <div className="ui-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-              <CheckCircle2 size={16} color="#2563eb" />
+              <CheckCircle2 size={16} color={hasData ? "#2563eb" : "#94a3b8"} />
               <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Data Quality & Readiness</span>
             </div>
 
@@ -648,24 +664,26 @@ export default function DataSourcesView({ onNavigate }) {
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke="#eff6ff"
-                    strokeWidth="4"
+                    stroke="#e2e8f0"
+                    strokeWidth="3"
                   />
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke={hasData ? '#10b981' : '#2563eb'}
-                    strokeDasharray={`${hasData ? 100 : (validation?.overall_readiness_pct || 0)}, 100`}
-                    strokeWidth="4"
-                    strokeLinecap="round"
+                    stroke={hasData ? "#10b981" : "#94a3b8"}
+                    strokeDasharray={hasData ? "100, 100" : "0, 100"}
+                    strokeWidth="3"
                   />
                 </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800, color: hasData ? '#059669' : '#94a3b8' }}>
+                  {hasData ? '100%' : '0%'}
+                </div>
               </div>
 
               <div>
                 <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Readiness Score</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                  <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
                     {hasData ? 100 : Math.round(validation?.overall_readiness_pct || 0)}
                   </span>
                   <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>/100</span>
