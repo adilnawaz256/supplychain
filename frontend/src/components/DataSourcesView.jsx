@@ -391,12 +391,12 @@ export default function DataSourcesView({ onNavigate }) {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
-                  width: '40px', height: '40px', borderRadius: '10px',
-                  backgroundColor: '#eff6ff', color: '#2563eb',
+                  width: '44px', height: '44px', borderRadius: '12px',
+                  backgroundColor: '#336791', color: '#ffffff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: '0.8rem'
+                  fontWeight: 800, fontSize: '0.85rem', boxShadow: '0 3px 8px rgba(51, 103, 145, 0.25)'
                 }}>
-                  🐘 PG
+                  <Database size={22} color="#ffffff" />
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -445,12 +445,12 @@ export default function DataSourcesView({ onNavigate }) {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
-                  width: '40px', height: '40px', borderRadius: '10px',
-                  backgroundColor: '#fef2f2', color: '#ef4444',
+                  width: '44px', height: '44px', borderRadius: '12px',
+                  backgroundColor: '#e42528', color: '#ffffff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: '0.8rem'
+                  fontWeight: 900, fontSize: '0.7rem', letterSpacing: '0.5px', boxShadow: '0 3px 8px rgba(228, 37, 40, 0.25)'
                 }}>
-                  🍱 ZH
+                  ZOHO
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -499,12 +499,12 @@ export default function DataSourcesView({ onNavigate }) {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
-                  width: '40px', height: '40px', borderRadius: '10px',
-                  backgroundColor: '#eff6ff', color: '#0284c7',
+                  width: '44px', height: '44px', borderRadius: '12px',
+                  backgroundColor: '#0284c7', color: '#ffffff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: '0.8rem'
+                  fontWeight: 800, fontSize: '0.8rem', boxShadow: '0 3px 8px rgba(2, 132, 199, 0.25)'
                 }}>
-                  📁 SF
+                  <Server size={22} color="#ffffff" />
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

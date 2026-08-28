@@ -259,6 +259,28 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
                   {ws}
                 </div>
               ))}
+              <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '4px 0' }} />
+              <div
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  onNavigate('workspaces');
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  color: '#2563eb',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <span>+ Create New Workspace</span>
+              </div>
             </div>
           )}
         </div>
