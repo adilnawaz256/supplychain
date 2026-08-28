@@ -102,6 +102,7 @@ export default function AlertsView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          webhook_url: webhookUrl,
           channel: teamChannel,
           type: 'STOCKOUT_ALERT',
           data: topCriticalRisk || { sku: 'SKU-ELEC-101', name: 'Smart IoT Sensor Node v2', risk: 'CRITICAL' }
