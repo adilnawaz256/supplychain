@@ -157,16 +157,53 @@ export default function AlertsView() {
 
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                Teams Webhook URL
+                Teams Webhook URL (Optional for Custom Channel)
               </label>
               <input
                 type="text"
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
-                placeholder="https://outlook.office.com/webhook/..."
+                placeholder="https://outlook.office.com/webhook/... or use 1-Click OAuth below"
                 className="ui-input"
                 style={{ fontSize: '0.78rem' }}
               />
+            </div>
+
+            {/* 1-Click Microsoft OAuth Button */}
+            <div style={{ marginTop: '4px' }}>
+              <button
+                onClick={() => {
+                  window.location.href = `${API_BASE_URL}/api/auth/microsoft/login`;
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justify: 'center',
+                  gap: '10px',
+                  width: '100%',
+                  padding: '12px 18px',
+                  borderRadius: '10px',
+                  backgroundColor: '#2f2f6f',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(47, 47, 111, 0.25)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 23 23">
+                  <path fill="#f35325" d="M1 1h10v10H1z"/>
+                  <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                  <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                  <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                </svg>
+                <span>Sign in with Microsoft (1-Click Connect)</span>
+              </button>
+              <div style={{ fontSize: '0.7rem', color: '#059669', textAlign: 'center', marginTop: '6px', fontWeight: 600 }}>
+                ✓ Connected via Azure App (Client ID: 52889720...)
+              </div>
             </div>
           </div>
 
