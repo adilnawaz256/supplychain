@@ -190,13 +190,21 @@ class MicrosoftTeamsNotifier:
 
             # 3. Post Adaptive Card message into chat
             if chat_id:
+                raw_attachments = payload.get("payload", {}).get("attachments", [])
+                formatted_attachments = []
+                for att in raw_attachments:
+                    att_copy = dict(att)
+                    if isinstance(att_copy.get("content"), dict):
+                        att_copy["content"] = json.dumps(att_copy["content"])
+                    formatted_attachments.append(att_copy)
+
                 msg_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
                 msg_body = json.dumps({
                     "body": {
                         "contentType": "html",
                         "content": "<p><b>🚨 Wisualyst Supply Chain Alert</b></p>"
                     },
-                    "attachments": payload.get("payload", {}).get("attachments", [])
+                    "attachments": formatted_attachments
                 }).encode("utf-8")
                 
                 msg_req = urllib.request.Request(
