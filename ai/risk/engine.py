@@ -1,103 +1,119 @@
+import time
 from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
-from backend.app.models.models import Inventory, Product, Warehouse, Supplier, SupplierProduct
-from ai.inventory.optimization import InventoryOptimizer
-from ai.forecasting.engine import StatisticalForecastEngine
+from sqlalchemy.orm import Session, joinedload
+from backend.app.models.models import Inventory, Product, Warehouse, Supplier, SupplierProduct, SalesHistory
+from sqlalchemy import func
+
+# Simple in-memory cache for 30 seconds
+RISK_CACHE: Dict[str, Any] = {"timestamp": 0, "data": []}
 
 class InventoryRiskEngine:
     def __init__(self, db: Session):
         self.db = db
-        self.optimizer = InventoryOptimizer(db)
-        self.forecaster = StatisticalForecastEngine(db)
-
-    def evaluate_product_risk(self, product_id: int, warehouse_id: int) -> Dict[str, Any]:
-        opt_metrics = self.optimizer.calculate_inventory_metrics(product_id, warehouse_id)
-        forecast_res = self.forecaster.generate_forecast(product_id, warehouse_id, horizon_days=7)
-        
-        forecast_7d = forecast_res["total_forecasted_demand"]
-        current_stock = opt_metrics["current_stock"]
-        lead_time = opt_metrics["lead_time_days"]
-        doi = opt_metrics["days_of_inventory"]
-        safety_stock = opt_metrics["safety_stock_calculated"]
-        rop = opt_metrics["reorder_point_calculated"]
-
-        # Find primary supplier name
-        sup_prod = self.db.query(SupplierProduct).filter(SupplierProduct.product_id == product_id).first()
-        supplier_name = "Primary Vendor"
-        if sup_prod:
-            sup = self.db.query(Supplier).filter(Supplier.id == sup_prod.supplier_id).first()
-            if sup:
-                supplier_name = sup.name
-
-        # Classification Logic
-        # 1. CRITICAL: Stock < Safety Stock OR Days of Inventory < Lead Time
-        if current_stock < safety_stock or doi < lead_time:
-            risk_level = "CRITICAL"
-            reason = (
-                f"CRITICAL STOCKOUT RISK! Current stock ({current_stock}) is below safety stock threshold ({safety_stock}) "
-                f"or days of inventory ({doi} days) is less than supplier lead time ({lead_time} days). "
-                f"Forecast demand over next 7 days is {forecast_7d} units."
-            )
-        # 2. HIGH: Stock <= Reorder Point OR DOI <= Lead Time + 3
-        elif current_stock <= rop or doi <= (lead_time + 3):
-            risk_level = "HIGH"
-            reason = (
-                f"High stockout risk. Current stock ({current_stock}) is at or below reorder point ({rop}). "
-                f"Lead time is {lead_time} days; expected stock depletion in {doi} days."
-            )
-        # 3. LOW (Excess): DOI > 60 days or Current Stock > ROP * 4
-        elif doi > 60.0 or current_stock > (rop * 4):
-            risk_level = "LOW"
-            reason = (
-                f"Excess stock / low risk. Current stock ({current_stock}) provides {doi} days of inventory. "
-                f"Consider reallocating inventory to prevent high holding cost."
-            )
-        # 4. MEDIUM: Normal operating inventory
-        else:
-            risk_level = "MEDIUM"
-            reason = f"Stable inventory level ({current_stock} units, {doi} days of supply). Operating within normal parameters."
-
-        return {
-            "product_id": int(opt_metrics["product_id"]),
-            "sku": str(opt_metrics["sku"]),
-            "product_name": str(opt_metrics["product_name"]),
-            "warehouse_id": int(opt_metrics["warehouse_id"]),
-            "warehouse_name": str(opt_metrics["warehouse_name"]),
-            "current_stock": int(current_stock),
-            "allocated_stock": int(opt_metrics["allocated_stock"]),
-            "available_stock": int(opt_metrics["available_stock"]),
-            "avg_daily_demand": float(opt_metrics["avg_daily_demand"]),
-            "forecast_7d_demand": float(forecast_7d),
-            "lead_time_days": int(lead_time),
-            "safety_stock": int(safety_stock),
-            "reorder_point": int(rop),
-            "days_of_inventory": float(doi),
-            "stockout_risk_level": str(risk_level),
-            "reasoning": str(reason),
-            "recommended_order_quantity": int(opt_metrics["recommended_order_quantity"]),
-            "supplier_name": str(supplier_name)
-        }
 
     def get_all_inventory_risks(self, warehouse_id: Optional[int] = None, risk_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        query = self.db.query(Inventory)
+        global RISK_CACHE
+        now = time.time()
+        
+        # Return cached risks if valid within 30 seconds and no filters applied
+        if not warehouse_id and not risk_filter and (now - RISK_CACHE["timestamp"]) < 30 and RISK_CACHE["data"]:
+            return RISK_CACHE["data"]
+
+        # 1. Fast joined query to avoid N+1 queries
+        query = self.db.query(Inventory).options(
+            joinedload(Inventory.product),
+            joinedload(Inventory.warehouse)
+        )
         if warehouse_id:
             query = query.filter(Inventory.warehouse_id == warehouse_id)
 
         inventory_items = query.all()
-        results = []
+        
+        # 2. Pre-fetch average daily demand per product in 1 single bulk aggregate query
+        sales_data = self.db.query(
+            SalesHistory.product_id,
+            func.avg(SalesHistory.quantity_sold).label("avg_daily")
+        ).group_by(SalesHistory.product_id).all()
+        
+        avg_demand_map = {s[0]: float(s[1] or 5.0) for s in sales_data}
 
+        # 3. Pre-fetch supplier names in 1 query
+        sup_data = self.db.query(SupplierProduct.product_id, Supplier.name)\
+            .join(Supplier, SupplierProduct.supplier_id == Supplier.id).all()
+        supplier_map = {sp[0]: sp[1] for sp in sup_data}
+
+        results = []
         for inv in inventory_items:
-            try:
-                eval_res = self.evaluate_product_risk(inv.product_id, inv.warehouse_id)
-                if risk_filter:
-                    if eval_res["stockout_risk_level"] == risk_filter.upper():
-                        results.append(eval_res)
-                else:
-                    results.append(eval_res)
-            except Exception as e:
+            prod = inv.product
+            wh = inv.warehouse
+            if not prod or not wh:
                 continue
 
+            product_id = prod.id
+            sku = prod.sku
+            product_name = prod.name
+            wh_id = wh.id
+            wh_name = wh.name
+            current_stock = inv.current_stock
+            allocated_stock = inv.allocated_stock
+            available_stock = inv.available_stock
+            
+            avg_daily_demand = max(avg_demand_map.get(product_id, 5.0), 0.1)
+            forecast_7d = round(avg_daily_demand * 7, 1)
+            lead_time = prod.lead_time_days or 7
+            safety_stock = prod.safety_stock_min or 15
+            rop = prod.reorder_point or 25
+            doi = round(current_stock / avg_daily_demand, 1)
+            rec_order_qty = max(0, (rop * 2) - current_stock)
+            supplier_name = supplier_map.get(product_id, "Primary Vendor")
+
+            # Classification Logic
+            if current_stock < safety_stock or doi < lead_time:
+                risk_level = "CRITICAL"
+                reason = f"CRITICAL STOCKOUT RISK! Stock ({current_stock}) below safety buffer ({safety_stock}) or DOI ({doi}d) < Lead Time ({lead_time}d)."
+            elif current_stock <= rop or doi <= (lead_time + 3):
+                risk_level = "HIGH"
+                reason = f"High stockout risk. Stock ({current_stock}) at/below reorder point ({rop}). DOI is {doi} days."
+            elif doi > 60.0 or current_stock > (rop * 4):
+                risk_level = "LOW"
+                reason = f"Excess stock level ({current_stock} units, {doi} days supply)."
+            else:
+                risk_level = "MEDIUM"
+                reason = f"Stable inventory level ({current_stock} units, {doi} days of supply)."
+
+            item_res = {
+                "product_id": product_id,
+                "sku": sku,
+                "product_name": product_name,
+                "warehouse_id": wh_id,
+                "warehouse_name": wh_name,
+                "current_stock": current_stock,
+                "allocated_stock": allocated_stock,
+                "available_stock": available_stock,
+                "avg_daily_demand": round(avg_daily_demand, 2),
+                "forecast_7d_demand": forecast_7d,
+                "lead_time_days": lead_time,
+                "safety_stock": safety_stock,
+                "reorder_point": rop,
+                "days_of_inventory": doi,
+                "stockout_risk_level": risk_level,
+                "reasoning": reason,
+                "recommended_order_quantity": rec_order_qty,
+                "supplier_name": supplier_name
+            }
+
+            if risk_filter:
+                if risk_level == risk_filter.upper():
+                    results.append(item_res)
+            else:
+                results.append(item_res)
+
         # Sort by risk severity (CRITICAL > HIGH > MEDIUM > LOW)
-        order_map = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-        results.sort(key=lambda x: (order_map.get(x["stockout_risk_level"], 4), x["days_of_inventory"]))
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        results.sort(key=lambda x: severity_order.get(x["stockout_risk_level"], 99))
+
+        if not warehouse_id and not risk_filter:
+            RISK_CACHE["timestamp"] = now
+            RISK_CACHE["data"] = results
+
         return results
