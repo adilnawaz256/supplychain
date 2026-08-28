@@ -557,6 +557,9 @@ def get_mcp_tools(db: Session = Depends(get_db)):
 # --- BI Integration Adapters ---
 @router.get("/api/bi/export", tags=["BI Integration"])
 @router.get("/api/bi/powerbi", tags=["BI Integration"])
+@router.get("/api/bi/adapter/powerbi", tags=["BI Integration"])
+@router.get("/api/bi/adapter/powerbi/json", tags=["BI Integration"])
+@router.get("/api/bi/adapter/powerbi.json", tags=["BI Integration"])
 def export_powerbi(db: Session = Depends(get_db)):
     adapter = LocalBIAdapter()
     return adapter.export_powerbi(db)
