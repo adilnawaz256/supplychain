@@ -58,24 +58,24 @@ class InventoryRiskEngine:
             reason = f"Stable inventory level ({current_stock} units, {doi} days of supply). Operating within normal parameters."
 
         return {
-            "product_id": opt_metrics["product_id"],
-            "sku": opt_metrics["sku"],
-            "product_name": opt_metrics["product_name"],
-            "warehouse_id": opt_metrics["warehouse_id"],
-            "warehouse_name": opt_metrics["warehouse_name"],
-            "current_stock": current_stock,
-            "allocated_stock": opt_metrics["allocated_stock"],
-            "available_stock": opt_metrics["available_stock"],
-            "avg_daily_demand": opt_metrics["avg_daily_demand"],
-            "forecast_7d_demand": forecast_7d,
-            "lead_time_days": lead_time,
-            "safety_stock": safety_stock,
-            "reorder_point": rop,
-            "days_of_inventory": doi,
-            "stockout_risk_level": risk_level,
-            "reasoning": reason,
-            "recommended_order_quantity": opt_metrics["recommended_order_quantity"],
-            "supplier_name": supplier_name
+            "product_id": int(opt_metrics["product_id"]),
+            "sku": str(opt_metrics["sku"]),
+            "product_name": str(opt_metrics["product_name"]),
+            "warehouse_id": int(opt_metrics["warehouse_id"]),
+            "warehouse_name": str(opt_metrics["warehouse_name"]),
+            "current_stock": int(current_stock),
+            "allocated_stock": int(opt_metrics["allocated_stock"]),
+            "available_stock": int(opt_metrics["available_stock"]),
+            "avg_daily_demand": float(opt_metrics["avg_daily_demand"]),
+            "forecast_7d_demand": float(forecast_7d),
+            "lead_time_days": int(lead_time),
+            "safety_stock": int(safety_stock),
+            "reorder_point": int(rop),
+            "days_of_inventory": float(doi),
+            "stockout_risk_level": str(risk_level),
+            "reasoning": str(reason),
+            "recommended_order_quantity": int(opt_metrics["recommended_order_quantity"]),
+            "supplier_name": str(supplier_name)
         }
 
     def get_all_inventory_risks(self, warehouse_id: Optional[int] = None, risk_filter: Optional[str] = None) -> List[Dict[str, Any]]:
