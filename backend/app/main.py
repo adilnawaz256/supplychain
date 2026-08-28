@@ -32,6 +32,10 @@ def startup_event():
     try:
         prod_count = db.query(Product).count()
         print(f"Database initialized. Contains {prod_count} products.")
+        if prod_count == 0:
+            from database.seeds.seed_db import seed_database
+            seed_database(db)
+            print("Database automatically seeded with initial supply chain dataset.")
     except Exception as e:
         print(f"Startup DB Check Note: {e}")
     finally:

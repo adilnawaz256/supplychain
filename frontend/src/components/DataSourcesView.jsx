@@ -116,9 +116,15 @@ export default function DataSourcesView({ onNavigate }) {
         if (savedConnected) {
           try {
             setConnectedSources(JSON.parse(savedConnected));
-          } catch (e) {}
+          } catch (e) {
+            setConnectedSources({ pg: true, zoho: false, sftp: false });
+          }
         } else {
-          setConnectedSources({ pg: false, zoho: false, sftp: false });
+          // If backend already has data (e.g. initial launch), auto-mark PostgreSQL connected
+          const hasDbData = valData.dataset_summary?.products_mapped > 0 || valData.overall_readiness_pct > 0;
+          const initialConn = { pg: hasDbData, zoho: false, sftp: false };
+          setConnectedSources(initialConn);
+          localStorage.setItem('wisualyst_connected_sources', JSON.stringify(initialConn));
         }
       }
 

@@ -11,10 +11,12 @@ services:
     environment:
       - PORT=8000
       - HOST=0.0.0.0
-      - DATABASE_URL=sqlite:///./supply_chain.db
+      - DATABASE_URL=sqlite:////app/data/supply_chain.db
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - AI_PROVIDER=${AI_PROVIDER:-openai}
+    volumes:
+      - ./data:/app/data
     restart: always
 
   frontend:
