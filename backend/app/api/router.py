@@ -86,7 +86,8 @@ def microsoft_oauth_login():
     url = f"https://login.microsoftonline.com/{tenant_authority}/oauth2/v2.0/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(url=url)
 
-import requests
+import json
+import urllib.request
 
 @router.get("/api/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
 @router.get("/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
@@ -100,28 +101,31 @@ def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = 
     
     user_email = "user@microsoft.com"
     try:
-        # Exchange authorization code for Microsoft Graph token
+        # Exchange authorization code for Microsoft Graph token using built-in urllib
         token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-        token_data = {
+        post_data = urllib.parse.urlencode({
             "client_id": client_id,
             "client_secret": client_secret,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": redirect_uri
-        }
-        token_res = requests.post(token_url, data=token_data, timeout=10)
-        if token_res.ok:
-            token_json = token_res.json()
-            access_token = token_json.get("access_token")
-            # Query Microsoft Graph /me API for exact logged in account email
-            graph_res = requests.get(
-                "https://graph.microsoft.com/v1.0/me",
-                headers={"Authorization": f"Bearer {access_token}"},
-                timeout=10
-            )
-            if graph_res.ok:
-                me_data = graph_res.json()
-                user_email = me_data.get("mail") or me_data.get("userPrincipalName") or me_data.get("displayName") or "user@microsoft.com"
+        }).encode("utf-8")
+        
+        req = urllib.request.Request(token_url, data=post_data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:
+                token_json = json.loads(response.read().decode("utf-8"))
+                access_token = token_json.get("access_token")
+                
+                # Fetch user profile from Microsoft Graph
+                graph_req = urllib.request.Request(
+                    "https://graph.microsoft.com/v1.0/me",
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                with urllib.request.urlopen(graph_req, timeout=10) as graph_res:
+                    if graph_res.status == 200:
+                        me_data = json.loads(graph_res.read().decode("utf-8"))
+                        user_email = me_data.get("mail") or me_data.get("userPrincipalName") or me_data.get("displayName") or "user@microsoft.com"
     except Exception as e:
         print("Microsoft Graph token exchange note:", e)
 
