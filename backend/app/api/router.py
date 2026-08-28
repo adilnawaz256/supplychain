@@ -75,6 +75,10 @@ def send_teams_notification(payload: Dict[str, Any] = Body(...)):
             print("Graph chat dispatch error note:", e)
 
     result = teams_notifier.send_webhook_notification(webhook_url, card_msg)
+    if "graph_status" in card_msg:
+        result["graph_status"] = card_msg["graph_status"]
+    else:
+        result["graph_status"] = {"status": "NO_ACTIVE_SESSION", "message": "Click 'Sign in with Microsoft' in UI first to establish live session"}
     return {"status": "SUCCESS", "detail": result}
 
 # --- Microsoft Teams 1-Click OAuth Integration ---

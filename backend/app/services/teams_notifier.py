@@ -143,57 +143,81 @@ class MicrosoftTeamsNotifier:
     def send_graph_chat_message(self, access_token: str, user_id: Optional[str], payload: Dict[str, Any]) -> Dict[str, Any]:
         """Posts Adaptive Card directly to 1-on-1 Microsoft Teams Chat using Microsoft Graph API."""
         if not access_token:
-            return {"status": "NO_TOKEN"}
+            return {"status": "NO_TOKEN", "message": "User not authenticated with Microsoft"}
         try:
-            # 1. Create or get 1-on-1 chat
-            chat_url = "https://graph.microsoft.com/v1.0/chats"
-            chat_body = json.dumps({
-                "chatType": "oneOnOne",
-                "members": [
-                    {
-                        "@odata.type": "#microsoft.graph.aadUserConversationMember",
-                        "roles": ["owner"],
-                        "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')" if user_id else "https://graph.microsoft.com/v1.0/me"
-                    }
-                ]
-            }).encode("utf-8")
-            
-            chat_req = urllib.request.Request(
-                chat_url,
-                data=chat_body,
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json"
-                }
-            )
-            with urllib.request.urlopen(chat_req, timeout=10) as res:
-                if res.status in (200, 201):
-                    chat_data = json.loads(res.read().decode("utf-8"))
-                    chat_id = chat_data.get("id")
-                    
-                    # 2. Post Adaptive Card message into chat
-                    msg_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
-                    msg_body = json.dumps({
-                        "body": {
-                            "contentType": "html",
-                            "content": "<p><b>🚨 Wisualyst Supply Chain Alert</b></p>"
-                        },
-                        "attachments": payload.get("payload", {}).get("attachments", [])
-                    }).encode("utf-8")
-                    
-                    msg_req = urllib.request.Request(
-                        msg_url,
-                        data=msg_body,
-                        headers={
-                            "Authorization": f"Bearer {access_token}",
-                            "Content-Type": "application/json"
+            # 1. Try finding an existing chat from /me/chats
+            chat_id = None
+            try:
+                chats_req = urllib.request.Request(
+                    "https://graph.microsoft.com/v1.0/me/chats",
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                with urllib.request.urlopen(chats_req, timeout=8) as chats_res:
+                    if chats_res.status == 200:
+                        chats_data = json.loads(chats_res.read().decode("utf-8"))
+                        value_list = chats_data.get("value", [])
+                        if value_list:
+                            chat_id = value_list[0].get("id")
+            except Exception as e:
+                print("Get chats note:", e)
+
+            # 2. If no chat found, create 1-on-1 chat
+            if not chat_id:
+                chat_url = "https://graph.microsoft.com/v1.0/chats"
+                chat_body = json.dumps({
+                    "chatType": "oneOnOne",
+                    "members": [
+                        {
+                            "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                            "roles": ["owner"],
+                            "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')" if user_id else "https://graph.microsoft.com/v1.0/me"
                         }
-                    )
-                    with urllib.request.urlopen(msg_req, timeout=10) as msg_res:
-                        return {"status": "DELIVERED_TO_GRAPH_CHAT", "code": msg_res.status}
+                    ]
+                }).encode("utf-8")
+                
+                chat_req = urllib.request.Request(
+                    chat_url,
+                    data=chat_body,
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                with urllib.request.urlopen(chat_req, timeout=10) as res:
+                    if res.status in (200, 201):
+                        chat_data = json.loads(res.read().decode("utf-8"))
+                        chat_id = chat_data.get("id")
+
+            # 3. Post Adaptive Card message into chat
+            if chat_id:
+                msg_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
+                msg_body = json.dumps({
+                    "body": {
+                        "contentType": "html",
+                        "content": "<p><b>🚨 Wisualyst Supply Chain Alert</b></p>"
+                    },
+                    "attachments": payload.get("payload", {}).get("attachments", [])
+                }).encode("utf-8")
+                
+                msg_req = urllib.request.Request(
+                    msg_url,
+                    data=msg_body,
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                with urllib.request.urlopen(msg_req, timeout=10) as msg_res:
+                    return {"status": "DELIVERED_TO_GRAPH_CHAT", "code": msg_res.status, "chat_id": chat_id}
+            else:
+                return {"status": "NO_CHAT_ID", "message": "Could not locate or create Teams chat session"}
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8") if e.fp else str(e)
+            print("Graph chat delivery HTTP error:", e.code, err_body)
+            return {"status": "GRAPH_HTTP_ERROR", "code": e.code, "error": err_body}
         except Exception as e:
             print("Graph chat delivery note:", e)
-            return {"status": "GRAPH_CHAT_NOTE", "error": str(e)}
+            return {"status": "GRAPH_CHAT_ERROR", "error": str(e)}
 
     def send_webhook_notification(self, webhook_url: Optional[str], payload: Dict[str, Any]) -> Dict[str, Any]:
         """Sends JSON HTTP POST to Microsoft Teams Incoming Webhook."""
