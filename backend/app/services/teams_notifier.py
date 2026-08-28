@@ -192,8 +192,10 @@ class MicrosoftTeamsNotifier:
             if chat_id:
                 raw_attachments = payload.get("payload", {}).get("attachments", [])
                 formatted_attachments = []
-                for att in raw_attachments:
+                for idx, att in enumerate(raw_attachments):
                     att_copy = dict(att)
+                    if "id" not in att_copy or not att_copy["id"]:
+                        att_copy["id"] = f"card-attachment-{idx+1}"
                     if isinstance(att_copy.get("content"), dict):
                         att_copy["content"] = json.dumps(att_copy["content"])
                     formatted_attachments.append(att_copy)
