@@ -37,11 +37,30 @@ export default function DataSourcesView({ onNavigate }) {
   const [testingConnection, setTestingConnection] = useState(null);
   const [testResult, setTestResult] = useState({});
   const [connectingSource, setConnectingSource] = useState(null);
-  const [connectedSources, setConnectedSources] = useState({
-    pg: false,
-    zoho: false,
-    sftp: false
+  const [connectedSources, setConnectedSources] = useState(() => {
+    try {
+      const saved = localStorage.getItem('wisualyst_connected_sources');
+      return saved ? JSON.parse(saved) : { pg: false, zoho: false, sftp: false };
+    } catch (e) {
+      return { pg: false, zoho: false, sftp: false };
+    }
   });
+
+  const [activePipelineStep, setActivePipelineStep] = useState(() => {
+    try {
+      const saved = localStorage.getItem('wisualyst_pipeline_step');
+      return saved ? parseInt(saved, 10) : 1;
+    } catch (e) {
+      return 1;
+    }
+  });
+
+  const changePipelineStep = (step) => {
+    setActivePipelineStep(step);
+    try {
+      localStorage.setItem('wisualyst_pipeline_step', step.toString());
+    } catch (e) {}
+  };
 
   // Modal / Form state for configuring connectors
   const [activeModal, setActiveModal] = useState(null); // 'pg' | 'zoho' | 'sftp' | 'csv' | null
@@ -158,12 +177,13 @@ export default function DataSourcesView({ onNavigate }) {
   };
 
   const handleConnectAndIngest = async (sourceKey) => {
-    // 1. Immediately mark source connected & close modal so user is never stuck in pending
+    // 1. Immediately mark source connected & advance step to 2 (Discover Schema)
     setConnectedSources(prev => {
       const nextState = { ...prev, [sourceKey]: true };
       localStorage.setItem('wisualyst_connected_sources', JSON.stringify(nextState));
       return nextState;
     });
+    changePipelineStep(2);
     setActiveModal(null);
     setIsProcessing(false);
 
@@ -289,93 +309,72 @@ export default function DataSourcesView({ onNavigate }) {
   return (
     <div style={{ padding: '0 32px 32px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      {/* Top 5-Step Stepper Matching Screenshot */}
+      {/* Top 5-Step Stepper Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        maxWidth: '860px',
+        maxWidth: '880px',
         margin: '0 auto',
         width: '100%',
         padding: '6px 0 16px 0'
       }}>
-        {/* Step 1 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            backgroundColor: hasData ? '#10b981' : '#2563eb', color: '#ffffff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.8rem', fontWeight: 700
-          }}>
-            {hasData ? <Check size={16} strokeWidth={3} /> : '1'}
-          </div>
-          <div>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>Connect Data Source</div>
-            <div style={{ fontSize: '0.7rem', color: hasData ? '#059669' : '#2563eb', fontWeight: 600 }}>
-              {hasData ? '3 of 3 connected' : `${connectedCount} of 3 connected`}
-            </div>
-          </div>
-        </div>
+        {[
+          { num: 1, label: 'Connect Data Source', desc: hasData ? 'Connected' : `${connectedCount} of 3 connected` },
+          { num: 2, label: 'Discover Schema', desc: displayTables.length > 0 ? `${displayTables.length} Tables` : 'Pending' },
+          { num: 3, label: 'Canonical Mapping', desc: hasData ? '7 Suggested' : 'Pending' },
+          { num: 4, label: 'Data Readiness', desc: hasData ? '100/100 Ready' : 'Pending' },
+          { num: 5, label: 'Data Ingestion', desc: hasData ? 'Complete' : 'Pending' }
+        ].map((s, idx, arr) => {
+          const isDone = hasData || activePipelineStep > s.num;
+          const isActive = activePipelineStep === s.num;
 
-        <div style={{ flex: 1, height: '2px', backgroundColor: hasData ? '#10b981' : '#e2e8f0', margin: '0 12px' }} />
+          return (
+            <React.Fragment key={s.num}>
+              <div
+                onClick={() => changePipelineStep(s.num)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: '8px',
+                  backgroundColor: isActive ? '#eff6ff' : 'transparent',
+                  border: isActive ? '1px solid #bfdbfe' : '1px solid transparent',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{
+                  width: '28px', height: '28px', borderRadius: '50%',
+                  backgroundColor: isDone ? '#10b981' : (isActive ? '#2563eb' : '#f1f5f9'),
+                  color: (isDone || isActive) ? '#ffffff' : '#64748b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.8rem', fontWeight: 700
+                }}>
+                  {isDone ? <Check size={16} strokeWidth={3} /> : s.num}
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: isActive ? '#2563eb' : '#0f172a' }}>
+                    {s.label}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: isDone ? '#059669' : (isActive ? '#2563eb' : '#94a3b8'), fontWeight: 600 }}>
+                    {s.desc}
+                  </div>
+                </div>
+              </div>
 
-        {/* Step 2 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            backgroundColor: hasData ? '#10b981' : '#f1f5f9',
-            color: hasData ? '#ffffff' : '#64748b',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem'
-          }}>
-            2
-          </div>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: hasData ? '#0f172a' : '#64748b' }}>Discover Schema</div>
-        </div>
-
-        <div style={{ flex: 1, height: '2px', backgroundColor: hasData ? '#10b981' : '#e2e8f0', margin: '0 12px' }} />
-
-        {/* Step 3 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            backgroundColor: hasData ? '#10b981' : '#f1f5f9',
-            color: hasData ? '#ffffff' : '#64748b',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem'
-          }}>
-            3
-          </div>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: hasData ? '#0f172a' : '#64748b' }}>Canonical Mapping</div>
-        </div>
-
-        <div style={{ flex: 1, height: '2px', backgroundColor: hasData ? '#10b981' : '#e2e8f0', margin: '0 12px' }} />
-
-        {/* Step 4 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            backgroundColor: hasData ? '#10b981' : '#f1f5f9',
-            color: hasData ? '#ffffff' : '#64748b',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem'
-          }}>
-            4
-          </div>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: hasData ? '#0f172a' : '#64748b' }}>Data Readiness</div>
-        </div>
-
-        <div style={{ flex: 1, height: '2px', backgroundColor: hasData ? '#10b981' : '#e2e8f0', margin: '0 12px' }} />
-
-        {/* Step 5 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '28px', height: '28px', borderRadius: '50%',
-            backgroundColor: hasData ? '#10b981' : '#f1f5f9',
-            color: hasData ? '#ffffff' : '#64748b',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem'
-          }}>
-            5
-          </div>
-          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: hasData ? '#059669' : '#64748b' }}>Data Ingestion</div>
-        </div>
+              {idx < arr.length - 1 && (
+                <div style={{
+                  flex: 1,
+                  height: '2px',
+                  backgroundColor: isDone ? '#10b981' : '#e2e8f0',
+                  margin: '0 8px'
+                }} />
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {/* ROW 1: 3 Connected Sources Cards Matching Screenshot */}
@@ -854,30 +853,51 @@ export default function DataSourcesView({ onNavigate }) {
         </div>
       </div>
 
-      {/* Bottom Action Buttons */}
+      {/* Bottom Action Buttons & Step Progression */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: '8px'
+        paddingTop: '8px',
+        borderTop: '1px solid #e2e8f0',
+        marginTop: '12px'
       }}>
         <button
-          onClick={() => onNavigate('workspaces')}
+          onClick={() => {
+            if (activePipelineStep > 1) {
+              changePipelineStep(activePipelineStep - 1);
+            } else {
+              onNavigate('workspaces');
+            }
+          }}
           className="btn-secondary"
           style={{ padding: '10px 20px', fontSize: '0.85rem' }}
         >
           <ArrowLeft size={16} />
-          <span>Back</span>
+          <span>{activePipelineStep > 1 ? `Back to Step ${activePipelineStep - 1}` : 'Back to Workspaces'}</span>
         </button>
 
-        <button
-          onClick={() => onNavigate('overview')}
-          className="btn-primary"
-          style={{ padding: '10px 24px', fontSize: '0.85rem' }}
-        >
-          <span>Continue to Overview Control Tower</span>
-          <ArrowRight size={16} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {activePipelineStep < 5 ? (
+            <button
+              onClick={() => changePipelineStep(activePipelineStep + 1)}
+              className="btn-primary"
+              style={{ padding: '10px 24px', fontSize: '0.85rem', backgroundColor: '#2563eb' }}
+            >
+              <span>Next Step: Step {activePipelineStep + 1}</span>
+              <ArrowRight size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={() => onNavigate('overview')}
+              className="btn-primary"
+              style={{ padding: '10px 24px', fontSize: '0.85rem', backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)' }}
+            >
+              <span>🎉 Pipeline Active — Go to Overview Control Tower</span>
+              <ArrowRight size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* MODAL 1: Connect PostgreSQL */}
