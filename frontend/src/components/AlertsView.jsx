@@ -11,27 +11,42 @@ import {
   Send,
   Sliders,
   Check,
-  Inbox
+  Inbox,
+  ShieldCheck
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 
 export default function AlertsView() {
   const [teamWorkspace, setTeamWorkspace] = useState('Global Supply Chain Enterprise');
   const [teamChannel, setTeamChannel] = useState('alerts-and-insights');
-  const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('wisualyst_teams_webhook') || '');
+  const [isTeamsConnected, setIsTeamsConnected] = useState(() => {
+    return localStorage.getItem('wisualyst_teams_connected') === 'true';
+  });
+  const [connectedAccount, setConnectedAccount] = useState(() => {
+    return localStorage.getItem('wisualyst_teams_account') || 'fabric@wisualyst.com';
+  });
+
   const [pipelineFailures, setPipelineFailures] = useState(true);
   const [dataQualityIssues, setDataQualityIssues] = useState(true);
   const [schemaChanges, setSchemaChanges] = useState(true);
   const [aiRecommendations, setAiRecommendations] = useState(true);
   const [testSent, setTestSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [poIssued, setPoIssued] = useState(false);
 
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
 
   useEffect(() => {
+    // Check URL search parameters for OAuth callback
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('teams_connected') === 'true') {
+      const acct = params.get('account') || 'fabric@wisualyst.com';
+      setIsTeamsConnected(true);
+      setConnectedAccount(acct);
+      localStorage.setItem('wisualyst_teams_connected', 'true');
+      localStorage.setItem('wisualyst_teams_account', acct);
+    }
+
     async function loadAlerts() {
       try {
         const [riskRes, recRes] = await Promise.all([
@@ -47,30 +62,27 @@ export default function AlertsView() {
     loadAlerts();
   }, []);
 
-  const handleSaveWebhook = () => {
-    localStorage.setItem('wisualyst_teams_webhook', webhookUrl);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleMicrosoftLogin = () => {
+    // Direct 1-Click login to Microsoft 365 OAuth
+    window.location.href = `${API_BASE_URL}/api/auth/microsoft/login`;
   };
 
   const handleSendTestMessage = async () => {
     setIsSending(true);
-    localStorage.setItem('wisualyst_teams_webhook', webhookUrl);
     try {
-      await fetch(`${API_BASE_URL}/api/teams/webhook/test`, {
+      await fetch(`${API_BASE_URL}/api/teams/webhook/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          webhook_url: webhookUrl,
-          channel: teamChannel
+          channel: teamChannel,
+          type: 'STOCKOUT_ALERT',
+          data: topCriticalRisk || { sku: 'SKU-ELEC-101', name: 'Smart IoT Sensor Node v2', risk: 'CRITICAL' }
         })
       });
       setTestSent(true);
-      setTimeout(() => {
-        setTestSent(false);
-      }, 4000);
+      setTimeout(() => setTestSent(false), 4000);
     } catch (err) {
-      console.error('Error sending test message:', err);
+      console.error('Error broadcasting alert:', err);
     } finally {
       setIsSending(false);
     }
@@ -94,38 +106,95 @@ export default function AlertsView() {
           {/* Teams Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '42px', height: '42px', borderRadius: '10px',
+              width: '44px', height: '44px', borderRadius: '12px',
               backgroundColor: '#5b5fc7', color: '#ffffff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 800, fontSize: '1.2rem'
+              fontWeight: 800, fontSize: '1.25rem', boxShadow: '0 4px 10px rgba(91, 95, 199, 0.3)'
             }}>
               T
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Microsoft Teams</span>
+                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Microsoft Teams</span>
                 <span style={{
-                  fontSize: '0.7rem', fontWeight: 600,
-                  color: webhookUrl.trim() ? '#059669' : '#d97706',
-                  backgroundColor: webhookUrl.trim() ? '#ecfdf5' : '#fffbe8',
-                  padding: '2px 8px', borderRadius: '999px',
-                  display: 'flex', alignItems: 'center', gap: '4px'
+                  fontSize: '0.72rem', fontWeight: 700,
+                  color: isTeamsConnected ? '#059669' : '#d97706',
+                  backgroundColor: isTeamsConnected ? '#ecfdf5' : '#fffbe8',
+                  padding: '3px 10px', borderRadius: '999px',
+                  display: 'flex', alignItems: 'center', gap: '5px'
                 }}>
                   <span style={{
-                    width: '5px', height: '5px', borderRadius: '50%',
-                    backgroundColor: webhookUrl.trim() ? '#10b981' : '#f59e0b'
+                    width: '6px', height: '6px', borderRadius: '50%',
+                    backgroundColor: isTeamsConnected ? '#10b981' : '#f59e0b'
                   }} />
-                  {webhookUrl.trim() ? 'Connected' : 'Not Connected'}
+                  {isTeamsConnected ? `Connected (${connectedAccount})` : 'Not Connected'}
                 </span>
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
-                Wisualyst Bot for Microsoft Teams v2.4
+              <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px' }}>
+                Authorized Enterprise App via Azure Entra ID
               </div>
             </div>
           </div>
 
+          {/* 1-Click Microsoft OAuth Action Card */}
+          <div style={{
+            padding: '16px', borderRadius: '12px',
+            backgroundColor: isTeamsConnected ? '#f0fdf4' : '#f8fafc',
+            border: isTeamsConnected ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+            display: 'flex', flexDirection: 'column', gap: '12px'
+          }}>
+            {!isTeamsConnected ? (
+              <>
+                <div style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.4 }}>
+                  Connect your Microsoft 365 organization account with 1-click. No webhook setup needed!
+                </div>
+                <button
+                  onClick={handleMicrosoftLogin}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    width: '100%', padding: '12px 18px', borderRadius: '10px',
+                    backgroundColor: '#5b5fc7', color: '#ffffff',
+                    fontWeight: 700, fontSize: '0.88rem', border: 'none', cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(91, 95, 199, 0.3)', transition: 'all 0.2s ease'
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 23 23">
+                    <path fill="#f35325" d="M1 1h10v10H1z"/>
+                    <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                    <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                    <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                  </svg>
+                  <span>Sign in with Microsoft (1-Click Connect)</span>
+                </button>
+              </>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <ShieldCheck size={20} color="#059669" />
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#065f46' }}>
+                      Connected as {connectedAccount}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#047857' }}>
+                      Azure Entra App ID: 52889720-e817-40ce-be25-ca732a9d1a5c
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsTeamsConnected(false)}
+                  style={{
+                    fontSize: '0.72rem', color: '#ef4444', background: 'none', border: 'none',
+                    fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Form Fields */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                 Teams Workspace
@@ -153,57 +222,6 @@ export default function AlertsView() {
                 <option value="supply-chain-ops"># supply-chain-ops</option>
                 <option value="executive-briefing"># executive-briefing</option>
               </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                Teams Webhook URL (Optional for Custom Channel)
-              </label>
-              <input
-                type="text"
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                placeholder="https://outlook.office.com/webhook/... or use 1-Click OAuth below"
-                className="ui-input"
-                style={{ fontSize: '0.78rem' }}
-              />
-            </div>
-
-            {/* 1-Click Microsoft OAuth Button */}
-            <div style={{ marginTop: '4px' }}>
-              <button
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/microsoft/login`;
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justify: 'center',
-                  gap: '10px',
-                  width: '100%',
-                  padding: '12px 18px',
-                  borderRadius: '10px',
-                  backgroundColor: '#2f2f6f',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: '0.88rem',
-                  border: 'none',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(47, 47, 111, 0.25)',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 23 23">
-                  <path fill="#f35325" d="M1 1h10v10H1z"/>
-                  <path fill="#81bc06" d="M12 1h10v10H12z"/>
-                  <path fill="#05a6f0" d="M1 12h10v10H1z"/>
-                  <path fill="#ffba08" d="M12 12h10v10H12z"/>
-                </svg>
-                <span>Sign in with Microsoft (1-Click Connect)</span>
-              </button>
-              <div style={{ fontSize: '0.7rem', color: '#059669', textAlign: 'center', marginTop: '6px', fontWeight: 600 }}>
-                ✓ Connected via Azure App (Client ID: 52889720...)
-              </div>
             </div>
           </div>
 
@@ -260,25 +278,21 @@ export default function AlertsView() {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-            <button
-              onClick={handleSaveWebhook}
-              className="btn-secondary"
-              style={{ flex: 1, padding: '10px', fontSize: '0.85rem' }}
-            >
-              <Check size={15} color={saved ? '#10b981' : '#64748b'} />
-              <span>{saved ? '✓ Webhook Saved!' : 'Save Webhook URL'}</span>
-            </button>
-
+          {/* Broadcast Action Button */}
+          <div style={{ marginTop: '8px' }}>
             <button
               onClick={handleSendTestMessage}
               disabled={isSending}
-              className="btn-primary"
-              style={{ flex: 1, padding: '10px', fontSize: '0.85rem' }}
+              style={{
+                width: '100%', padding: '12px 18px', borderRadius: '10px',
+                backgroundColor: '#5b5fc7', color: '#ffffff',
+                fontWeight: 700, fontSize: '0.9rem', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                boxShadow: '0 4px 12px rgba(91, 95, 199, 0.25)'
+              }}
             >
-              <Send size={15} />
-              <span>{isSending ? 'Sending...' : testSent ? '✓ Card Sent to Teams!' : 'Send Test Card to Teams'}</span>
+              <Send size={16} />
+              <span>{isSending ? 'Dispatching to Teams...' : testSent ? '✓ Adaptive Card Sent to Teams!' : 'Broadcast Alert Card to Microsoft Teams'}</span>
             </button>
           </div>
 
@@ -321,156 +335,110 @@ export default function AlertsView() {
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
-            overflowY: 'auto',
-            maxHeight: '520px'
+            flex: 1,
+            maxHeight: '620px',
+            overflowY: 'auto'
           }}>
-            {topCriticalRisk ? (
-              /* Message 1: Critical Stockout Adaptive Card */
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                <div style={{
-                  width: '36px', height: '36px', borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
-                  color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <Bot size={20} />
+            
+            {/* Card 1: Critical Stockout Alert */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '10px',
+              borderLeft: '4px solid #ef4444',
+              padding: '16px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertTriangle size={16} color="#ef4444" />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#ef4444' }}>
+                    🚨 CRITICAL STOCKOUT ALERT
+                  </span>
                 </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#252423' }}>Wisualyst Decision Bot</span>
-                    <span style={{
-                      fontSize: '0.65rem', fontWeight: 700, backgroundColor: '#e1dfdd',
-                      color: '#605e5c', padding: '1px 5px', borderRadius: '3px'
-                    }}>
-                      BOT
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: '#8a8886' }}>Live Stream</span>
-                  </div>
-
-                  {/* Adaptive Card */}
-                  <div style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '8px',
-                    border: '1px solid #e1dfdd',
-                    borderLeft: '4px solid #d13438',
-                    padding: '16px',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <AlertTriangle size={18} color="#d13438" />
-                      <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#252423' }}>
-                        CRITICAL: Stockout Risk Alert ({topCriticalRisk.sku})
-                      </span>
-                    </div>
-
-                    <p style={{ fontSize: '0.78rem', color: '#605e5c', margin: '0 0 12px 0' }}>
-                      Product <b>{topCriticalRisk.product_name}</b> has only <b>{topCriticalRisk.days_of_inventory} days</b> of inventory remaining at {topCriticalRisk.warehouse_name}.
-                    </p>
-
-                    <div style={{
-                      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px',
-                      backgroundColor: '#f3f2f1', padding: '10px', borderRadius: '6px', marginBottom: '12px', fontSize: '0.75rem'
-                    }}>
-                      <div>
-                        <div style={{ color: '#8a8886' }}>Current Stock</div>
-                        <div style={{ fontWeight: 700, color: '#d13438' }}>{topCriticalRisk.current_stock} units</div>
-                      </div>
-                      <div>
-                        <div style={{ color: '#8a8886' }}>Safety Stock Floor</div>
-                        <div style={{ fontWeight: 700, color: '#252423' }}>{topCriticalRisk.safety_stock} units</div>
-                      </div>
-                      <div>
-                        <div style={{ color: '#8a8886' }}>Supplier Lead Time</div>
-                        <div style={{ fontWeight: 700, color: '#252423' }}>{topCriticalRisk.lead_time_days} days</div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button style={{
-                        backgroundColor: '#5b5fc7', color: '#ffffff', border: 'none',
-                        borderRadius: '4px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer'
-                      }}>
-                        Issue Emergency PO ({topCriticalRisk.recommended_order_quantity} units)
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Just now</span>
               </div>
-            ) : (
+
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>
+                {topCriticalRisk ? topCriticalRisk.product_name : 'Smart IoT Sensor Node v2'} ({topCriticalRisk ? topCriticalRisk.sku : 'SKU-ELEC-101'})
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                Location: {topCriticalRisk ? topCriticalRisk.warehouse_name : 'Bangalore Distribution Hub'}
+              </div>
+
               <div style={{
-                textAlign: 'center',
-                padding: '30px 16px',
-                backgroundColor: '#ffffff',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '8px',
+                margin: '12px 0',
+                padding: '10px',
+                backgroundColor: '#f8fafc',
                 borderRadius: '8px',
-                border: '1px solid #e1dfdd'
+                fontSize: '0.75rem'
               }}>
-                <CheckCircle2 size={24} color="#10b981" style={{ margin: '0 auto 8px auto' }} />
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#252423' }}>
-                  No Active Critical Stockouts
+                <div>
+                  <span style={{ color: '#64748b', display: 'block' }}>Current Stock</span>
+                  <strong style={{ color: '#ef4444', fontSize: '0.85rem' }}>{topCriticalRisk ? topCriticalRisk.current_stock : 12} units</strong>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#605e5c', marginTop: '2px' }}>
-                  Teams bot will post adaptive card notifications when risk levels exceed threshold.
+                <div>
+                  <span style={{ color: '#64748b', display: 'block' }}>Safety Buffer</span>
+                  <strong style={{ color: '#0f172a', fontSize: '0.85rem' }}>{topCriticalRisk ? topCriticalRisk.safety_stock : 40} units</strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block' }}>Days of Inv (DOI)</span>
+                  <strong style={{ color: '#ef4444', fontSize: '0.85rem' }}>{topCriticalRisk ? topCriticalRisk.doi : 1.8} days</strong>
                 </div>
               </div>
-            )}
 
-            {topRec && (
-              /* Message 2: AI Recommendation Adaptive Card */
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                <div style={{
-                  width: '36px', height: '36px', borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
-                  color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                <button style={{
+                  padding: '6px 12px', borderRadius: '6px', backgroundColor: '#5b5fc7', color: '#ffffff',
+                  border: 'none', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer'
                 }}>
-                  <Bot size={20} />
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#252423' }}>Wisualyst Decision Bot</span>
-                    <span style={{
-                      fontSize: '0.65rem', fontWeight: 700, backgroundColor: '#e1dfdd',
-                      color: '#605e5c', padding: '1px 5px', borderRadius: '3px'
-                    }}>
-                      BOT
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: '#8a8886' }}>Live Stream</span>
-                  </div>
-
-                  {/* Adaptive Card */}
-                  <div style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '8px',
-                    border: '1px solid #e1dfdd',
-                    borderLeft: '4px solid #5b5fc7',
-                    padding: '16px',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <Sparkles size={18} color="#5b5fc7" />
-                      <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#252423' }}>
-                        {topRec.title}
-                      </span>
-                    </div>
-
-                    <p style={{ fontSize: '0.78rem', color: '#605e5c', margin: '0 0 12px 0' }}>
-                      {topRec.summary || topRec.reason}
-                    </p>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button style={{
-                        backgroundColor: '#5b5fc7', color: '#ffffff', border: 'none',
-                        borderRadius: '4px', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer'
-                      }}>
-                        Approve & Dispatch PO
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  Approve Emergency PO (500 units)
+                </button>
+                <button style={{
+                  padding: '6px 12px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#475569',
+                  border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer'
+                }}>
+                  View in Wisualyst
+                </button>
               </div>
-            )}
+            </div>
+
+            {/* Card 2: AI Prescriptive Action */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '10px',
+              borderLeft: '4px solid #2563eb',
+              padding: '16px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={16} color="#2563eb" />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2563eb' }}>
+                    🤖 AI PRESCRIPTIVE RECOMMENDATION
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>10 mins ago</span>
+              </div>
+
+              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                {topRec ? topRec.title : 'Transfer 200 units from WH-BOM-01 to WH-BLR-01'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px', lineHeight: 1.4 }}>
+                {topRec ? topRec.reasoning : 'Prevents AED 45,000 stockout loss. Supplier lead time is 14 days, but inter-warehouse transfer takes only 2 days.'}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                <button style={{
+                  padding: '6px 12px', borderRadius: '6px', backgroundColor: '#2563eb', color: '#ffffff',
+                  border: 'none', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer'
+                }}>
+                  Execute Inter-Warehouse Transfer
+                </button>
+              </div>
+            </div>
 
           </div>
         </div>
