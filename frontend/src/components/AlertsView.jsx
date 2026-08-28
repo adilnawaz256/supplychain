@@ -36,6 +36,16 @@ export default function AlertsView() {
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
 
+  const handleDisconnect = () => {
+    setIsTeamsConnected(false);
+    setConnectedAccount('');
+    localStorage.removeItem('wisualyst_teams_connected');
+    localStorage.removeItem('wisualyst_teams_account');
+    if (window.history.pushState) {
+      window.history.pushState('', document.title, window.location.pathname + '#alerts');
+    }
+  };
+
   useEffect(() => {
     // 1. Check URL query params (both search and hash)
     const searchParams = new URLSearchParams(window.location.search);
@@ -45,22 +55,21 @@ export default function AlertsView() {
     const isConnectedParam = searchParams.get('teams_connected') === 'true' || hashParams.get('teams_connected') === 'true';
     const accountParam = searchParams.get('account') || hashParams.get('account');
 
-    if (isConnectedParam) {
-      const acct = accountParam || 'fabric@wisualyst.com';
+    if (isConnectedParam && accountParam) {
       setIsTeamsConnected(true);
-      setConnectedAccount(acct);
+      setConnectedAccount(accountParam);
       localStorage.setItem('wisualyst_teams_connected', 'true');
-      localStorage.setItem('wisualyst_teams_account', acct);
+      localStorage.setItem('wisualyst_teams_account', accountParam);
     } else {
       // 2. Fetch connection status directly from API
       fetch(`${API_BASE_URL}/api/auth/microsoft/status`)
         .then(res => res.json())
         .then(data => {
-          if (data && data.connected) {
+          if (data && data.connected && data.account) {
             setIsTeamsConnected(true);
-            setConnectedAccount(data.account || 'fabric@wisualyst.com');
+            setConnectedAccount(data.account);
             localStorage.setItem('wisualyst_teams_connected', 'true');
-            localStorage.setItem('wisualyst_teams_account', data.account || 'fabric@wisualyst.com');
+            localStorage.setItem('wisualyst_teams_account', data.account);
           }
         })
         .catch(err => console.log('OAuth status check note:', err));
@@ -200,7 +209,7 @@ export default function AlertsView() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setIsTeamsConnected(false)}
+                  onClick={handleDisconnect}
                   style={{
                     fontSize: '0.72rem', color: '#ef4444', background: 'none', border: 'none',
                     fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'

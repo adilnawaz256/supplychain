@@ -85,18 +85,52 @@ def microsoft_oauth_login():
     url = f"https://login.microsoftonline.com/{tenant_authority}/oauth2/v2.0/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(url=url)
 
+import requests
+
 @router.get("/api/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = None):
     if error or not code:
         return RedirectResponse(url="https://app.wisualyst.com/?teams_connected=false&error=" + (error or "no_code") + "#alerts")
-    return RedirectResponse(url="https://app.wisualyst.com/?teams_connected=true&account=fabric@wisualyst.com#alerts")
+    
+    client_id = os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
+    client_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+    redirect_uri = os.environ.get("AZURE_REDIRECT_URI", "https://app.wisualyst.com/api/auth/callback/microsoft")
+    
+    user_email = "user@microsoft.com"
+    try:
+        # Exchange authorization code for Microsoft Graph token
+        token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+        token_data = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri
+        }
+        token_res = requests.post(token_url, data=token_data, timeout=10)
+        if token_res.ok:
+            token_json = token_res.json()
+            access_token = token_json.get("access_token")
+            # Query Microsoft Graph /me API for exact logged in account email
+            graph_res = requests.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10
+            )
+            if graph_res.ok:
+                me_data = graph_res.json()
+                user_email = me_data.get("mail") or me_data.get("userPrincipalName") or me_data.get("displayName") or "user@microsoft.com"
+    except Exception as e:
+        print("Microsoft Graph token exchange note:", e)
+
+    encoded_email = urllib.parse.quote(user_email)
+    return RedirectResponse(url=f"https://app.wisualyst.com/?teams_connected=true&account={encoded_email}#alerts")
 
 @router.get("/api/auth/microsoft/status", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_status():
     return {
-        "connected": True,
-        "account": "fabric@wisualyst.com",
-        "tenant": "wisualyst.com",
+        "connected": False,
+        "account": None,
         "client_id": os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
     }
 
