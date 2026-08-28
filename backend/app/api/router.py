@@ -67,6 +67,7 @@ import urllib.parse
 from fastapi.responses import RedirectResponse
 
 @router.get("/api/auth/microsoft/login", tags=["Microsoft Teams Integration"])
+@router.get("/auth/microsoft/login", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_login():
     client_id = os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
     # Multi-tenant authority allows ANY Microsoft user/organization account to sign in
@@ -88,6 +89,7 @@ def microsoft_oauth_login():
 import requests
 
 @router.get("/api/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
+@router.get("/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = None):
     if error or not code:
         return RedirectResponse(url="https://app.wisualyst.com/?teams_connected=false&error=" + (error or "no_code") + "#alerts")
