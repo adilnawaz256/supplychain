@@ -37,14 +37,33 @@ export default function AlertsView() {
   const [recommendations, setRecommendations] = useState([]);
 
   useEffect(() => {
-    // Check URL search parameters for OAuth callback
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('teams_connected') === 'true') {
-      const acct = params.get('account') || 'fabric@wisualyst.com';
+    // 1. Check URL query params (both search and hash)
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashString = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+    const hashParams = new URLSearchParams(hashString);
+    
+    const isConnectedParam = searchParams.get('teams_connected') === 'true' || hashParams.get('teams_connected') === 'true';
+    const accountParam = searchParams.get('account') || hashParams.get('account');
+
+    if (isConnectedParam) {
+      const acct = accountParam || 'fabric@wisualyst.com';
       setIsTeamsConnected(true);
       setConnectedAccount(acct);
       localStorage.setItem('wisualyst_teams_connected', 'true');
       localStorage.setItem('wisualyst_teams_account', acct);
+    } else {
+      // 2. Fetch connection status directly from API
+      fetch(`${API_BASE_URL}/api/auth/microsoft/status`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.connected) {
+            setIsTeamsConnected(true);
+            setConnectedAccount(data.account || 'fabric@wisualyst.com');
+            localStorage.setItem('wisualyst_teams_connected', 'true');
+            localStorage.setItem('wisualyst_teams_account', data.account || 'fabric@wisualyst.com');
+          }
+        })
+        .catch(err => console.log('OAuth status check note:', err));
     }
 
     async function loadAlerts() {

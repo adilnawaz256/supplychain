@@ -88,8 +88,8 @@ def microsoft_oauth_login():
 @router.get("/api/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = None):
     if error or not code:
-        return RedirectResponse(url="https://app.wisualyst.com/#alerts?teams_connected=false&error=" + (error or "no_code"))
-    return RedirectResponse(url="https://app.wisualyst.com/#alerts?teams_connected=true&account=fabric@wisualyst.com")
+        return RedirectResponse(url="https://app.wisualyst.com/?teams_connected=false&error=" + (error or "no_code") + "#alerts")
+    return RedirectResponse(url="https://app.wisualyst.com/?teams_connected=true&account=fabric@wisualyst.com#alerts")
 
 @router.get("/api/auth/microsoft/status", tags=["Microsoft Teams Integration"])
 def microsoft_oauth_status():
