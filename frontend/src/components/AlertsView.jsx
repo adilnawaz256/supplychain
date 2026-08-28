@@ -41,10 +41,10 @@ export default function AlertsView() {
     setConnectedAccount('');
     localStorage.removeItem('wisualyst_teams_connected');
     localStorage.removeItem('wisualyst_teams_account');
+    fetch(`${API_BASE_URL}/api/auth/microsoft/disconnect`, { method: 'POST' }).catch(err => console.log(err));
     if (window.history.pushState) {
       window.history.pushState('', document.title, window.location.pathname + '#alerts');
     }
-    
   };
 
   useEffect(() => {

@@ -300,12 +300,25 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_name = Column(String(100), nullable=False)
-    user_email = Column(String(150), nullable=False)
-    action = Column(String(150), nullable=False)
-    category = Column(String(100), default="General")
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    user = Column(String(100), nullable=False)
+    action = Column(String(100), nullable=False)
     details = Column(Text, nullable=True)
-    ip_address = Column(String(50), default="127.0.0.1")
+    ip_address = Column(String(50), nullable=True)
+    type = Column(String(50), default="User Action")
+
+class MicrosoftOAuthConnection(Base):
+    __tablename__ = "microsoft_oauth_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String(255), nullable=False, unique=True, index=True)
+    user_id = Column(String(255), nullable=True)
+    display_name = Column(String(255), nullable=True)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     severity = Column(String(20), default="INFO")
     timestamp = Column(DateTime, default=datetime.utcnow)
 

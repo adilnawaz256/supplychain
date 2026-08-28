@@ -18,7 +18,7 @@ from connectors.csv_connector import CSVIngestionConnector
 from connectors.mock_erp_connector import MockERPConnector
 from connectors.mock_wms_connector import MockWMSConnector
 from database.seeds.seed_db import seed_database
-from backend.app.models.models import Role, WorkspaceMember
+from backend.app.models.models import Role, WorkspaceMember, AuditLog, MicrosoftOAuthConnection
 from backend.app.services.teams_notifier import MicrosoftTeamsNotifier
 
 router = APIRouter()
@@ -50,7 +50,7 @@ def send_teams_test_card(payload: Dict[str, Any] = Body(...), db: Session = Depe
     return {"status": "SUCCESS", "message": "Microsoft Teams Adaptive Card sent successfully!", "detail": result}
 
 @router.post("/api/teams/webhook/send", tags=["Microsoft Teams Integration"])
-def send_teams_notification(payload: Dict[str, Any] = Body(...)):
+def send_teams_notification(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     webhook_url = payload.get("webhook_url")
     notification_type = payload.get("type", "STOCKOUT_ALERT")
     alert_data = payload.get("data", {})
@@ -61,13 +61,22 @@ def send_teams_notification(payload: Dict[str, Any] = Body(...)):
     else:
         card_msg = teams_notifier.build_stockout_alert_card(alert_data, channel=channel)
 
-    # If logged in via 1-Click OAuth, dispatch 1-on-1 Teams direct message via Microsoft Graph API
+    # Fetch active Microsoft OAuth session from memory or persistent PostgreSQL DB
     session = ACTIVE_MICROSOFT_SESSIONS.get("latest")
-    if session and session.get("access_token"):
+    access_token = session.get("access_token") if session else None
+    user_id = session.get("user_id") if session else None
+    
+    if not access_token:
+        db_conn = db.query(MicrosoftOAuthConnection).filter(MicrosoftOAuthConnection.is_active == 1).order_by(MicrosoftOAuthConnection.updated_at.desc()).first()
+        if db_conn:
+            access_token = db_conn.access_token
+            user_id = db_conn.user_id
+
+    if access_token:
         try:
             graph_res = teams_notifier.send_graph_chat_message(
-                access_token=session["access_token"],
-                user_id=session.get("user_id"),
+                access_token=access_token,
+                user_id=user_id,
                 payload=card_msg
             )
             card_msg["graph_status"] = graph_res
@@ -110,7 +119,7 @@ import urllib.request
 
 @router.get("/api/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
 @router.get("/auth/callback/microsoft", tags=["Microsoft Teams Integration"])
-def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = None):
+def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = None, db: Session = Depends(get_db)):
     if error or not code:
         return RedirectResponse(url="https://app.wisualyst.com/?teams_connected=false&error=" + (error or "no_code") + "#alerts")
     
@@ -145,13 +154,34 @@ def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = 
                         me_data = json.loads(graph_res.read().decode("utf-8"))
                         user_email = me_data.get("mail") or me_data.get("userPrincipalName") or me_data.get("displayName") or "user@microsoft.com"
                         
-                        # Store active OAuth session
+                        # Save in memory
                         ACTIVE_MICROSOFT_SESSIONS["latest"] = {
                             "access_token": access_token,
                             "user_email": user_email,
                             "user_id": me_data.get("id"),
                             "display_name": me_data.get("displayName")
                         }
+
+                        # Save persistently in PostgreSQL database so connection survives server restarts
+                        existing_conn = db.query(MicrosoftOAuthConnection).filter(MicrosoftOAuthConnection.user_email == user_email).first()
+                        if existing_conn:
+                            existing_conn.access_token = access_token
+                            existing_conn.refresh_token = token_json.get("refresh_token")
+                            existing_conn.user_id = me_data.get("id")
+                            existing_conn.display_name = me_data.get("displayName")
+                            existing_conn.is_active = 1
+                            existing_conn.updated_at = datetime.utcnow()
+                        else:
+                            new_conn = MicrosoftOAuthConnection(
+                                user_email=user_email,
+                                user_id=me_data.get("id"),
+                                display_name=me_data.get("displayName"),
+                                access_token=access_token,
+                                refresh_token=token_json.get("refresh_token"),
+                                is_active=1
+                            )
+                            db.add(new_conn)
+                        db.commit()
     except Exception as e:
         print("Microsoft Graph token exchange note:", e)
 
@@ -159,13 +189,13 @@ def microsoft_oauth_callback(code: Optional[str] = None, error: Optional[str] = 
     return RedirectResponse(url=f"https://app.wisualyst.com/?teams_connected=true&account={encoded_email}#alerts")
 
 @router.get("/api/auth/microsoft/status", tags=["Microsoft Teams Integration"])
-def microsoft_oauth_status():
-    session = ACTIVE_MICROSOFT_SESSIONS.get("latest")
-    if session:
+def microsoft_oauth_status(db: Session = Depends(get_db)):
+    active_conn = db.query(MicrosoftOAuthConnection).filter(MicrosoftOAuthConnection.is_active == 1).order_by(MicrosoftOAuthConnection.updated_at.desc()).first()
+    if active_conn:
         return {
             "connected": True,
-            "account": session.get("user_email"),
-            "display_name": session.get("display_name"),
+            "account": active_conn.user_email,
+            "display_name": active_conn.display_name,
             "client_id": os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
         }
     return {
@@ -173,6 +203,13 @@ def microsoft_oauth_status():
         "account": None,
         "client_id": os.environ.get("AZURE_CLIENT_ID", "52889720-e817-40ce-be25-ca732a9d1a5c")
     }
+
+@router.post("/api/auth/microsoft/disconnect", tags=["Microsoft Teams Integration"])
+def microsoft_oauth_disconnect(db: Session = Depends(get_db)):
+    db.query(MicrosoftOAuthConnection).update({"is_active": 0})
+    db.commit()
+    ACTIVE_MICROSOFT_SESSIONS.clear()
+    return {"status": "SUCCESS", "message": "Microsoft Teams disconnected successfully"}
 
 
 # --- Database Administration Endpoints ---
