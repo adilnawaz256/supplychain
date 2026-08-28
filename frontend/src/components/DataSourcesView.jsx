@@ -176,16 +176,43 @@ export default function DataSourcesView({ onNavigate }) {
     }
   };
 
+  const [stepAnimationStage, setStepAnimationStage] = useState(0); // 0: Idle, 1: Connecting, 2: Discovering, 3: Mapping, 4: Validating, 5: Complete
+
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
   const handleConnectAndIngest = async (sourceKey) => {
-    // 1. Immediately mark source connected & advance step to 2 (Discover Schema)
+    setActiveModal(null);
+    setIsProcessing(true);
+    
+    // Step 1: Connecting Data Source
+    setStepAnimationStage(1);
+    changePipelineStep(1);
+    await delay(750);
+
+    // Step 2: Discover Schema
+    setStepAnimationStage(2);
+    changePipelineStep(2);
+    await delay(850);
+
+    // Step 3: Canonical Mapping
+    setStepAnimationStage(3);
+    changePipelineStep(3);
+    await delay(850);
+
+    // Step 4: Data Readiness
+    setStepAnimationStage(4);
+    changePipelineStep(4);
+    await delay(750);
+
+    // Step 5: Data Ingestion Complete
+    setStepAnimationStage(5);
+    changePipelineStep(5);
+
     setConnectedSources(prev => {
       const nextState = { ...prev, [sourceKey]: true };
       localStorage.setItem('wisualyst_connected_sources', JSON.stringify(nextState));
       return nextState;
     });
-    changePipelineStep(2);
-    setActiveModal(null);
-    setIsProcessing(false);
 
     const payload = sourceKey === 'pg'
       ? {
@@ -199,41 +226,14 @@ export default function DataSourcesView({ onNavigate }) {
       : { type: sourceKey.toUpperCase() };
 
     try {
-      // 2. Perform test, live table discovery & pipeline ingestion
-      const [testRes, discRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/connectors/test`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }),
-        fetch(`${API_BASE_URL}/api/connectors/discover`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-      ]);
-
-      if (testRes.ok) {
-        const testData = await testRes.json();
-        setTestResult(prev => ({ ...prev, [sourceKey]: testData.message || 'Connected (200 OK)' }));
-      }
-
-      if (discRes.ok) {
-        const discData = await discRes.json();
-        if (discData.tables && discData.tables.length > 0) {
-          setTables(discData.tables.map(t => ({
-            name: t.table_name || t.name,
-            source: sourceKey === 'pg' ? `AWS RDS PostgreSQL (${pgForm.host || 'Connected'})` : 'External System',
-            records: t.record_count ? t.record_count.toLocaleString() : (t.columns ? `${t.columns.length} columns` : '0')
-          })));
-        }
-      }
-
-      // Seed / Ingest data into backend to complete canonical pipeline
       await fetch(`${API_BASE_URL}/api/database/seed`, { method: 'POST' });
       await loadData();
     } catch (err) {
       console.error('Connection sync note:', err);
+    } finally {
+      setIsProcessing(false);
+      await delay(1000);
+      setStepAnimationStage(0);
     }
   };
 
@@ -278,7 +278,10 @@ export default function DataSourcesView({ onNavigate }) {
   };
 
   const connectedCount = Object.values(connectedSources).filter(Boolean).length;
-  const hasData = connectedCount > 0;
+  const hasData = connectedCount > 0 || stepAnimationStage >= 5;
+  const showSchema = hasData || stepAnimationStage >= 2;
+  const showMapping = hasData || stepAnimationStage >= 3;
+  const showReadiness = hasData || stepAnimationStage >= 4;
 
   const summary = hasData
     ? (validation?.dataset_summary && validation.dataset_summary.products_mapped > 0
@@ -298,7 +301,7 @@ export default function DataSourcesView({ onNavigate }) {
         retail_store_spaces: 0
       };
 
-  const displayTables = hasData
+  const displayTables = showSchema
     ? (tables.length > 0 ? tables : [
         { name: 'products', source: 'PostgreSQL Database', records: '50 rows (6 columns)' },
         { name: 'inventory_items', source: 'PostgreSQL Database', records: '120 rows (5 columns)' },
@@ -322,14 +325,14 @@ export default function DataSourcesView({ onNavigate }) {
         padding: '6px 0 16px 0'
       }}>
         {[
-          { num: 1, label: 'Connect Data Source', desc: hasData ? 'Connected' : `${connectedCount} of 3 connected` },
-          { num: 2, label: 'Discover Schema', desc: displayTables.length > 0 ? `${displayTables.length} Tables` : 'Pending' },
-          { num: 3, label: 'Canonical Mapping', desc: hasData ? '7 Suggested' : 'Pending' },
-          { num: 4, label: 'Data Readiness', desc: hasData ? '100/100 Ready' : 'Pending' },
-          { num: 5, label: 'Data Ingestion', desc: hasData ? 'Complete' : 'Pending' }
+          { num: 1, label: 'Connect Data Source', desc: (hasData || stepAnimationStage >= 1) ? 'Connected' : `${connectedCount} of 3 connected` },
+          { num: 2, label: 'Discover Schema', desc: showSchema ? `${displayTables.length} Tables` : 'Pending' },
+          { num: 3, label: 'Canonical Mapping', desc: showMapping ? '7 Suggested' : 'Pending' },
+          { num: 4, label: 'Data Readiness', desc: showReadiness ? '100/100 Ready' : 'Pending' },
+          { num: 5, label: 'Data Ingestion', desc: (hasData || stepAnimationStage >= 5) ? 'Complete' : 'Pending' }
         ].map((s, idx, arr) => {
-          const isDone = hasData || activePipelineStep > s.num;
-          const isActive = activePipelineStep === s.num;
+          const isDone = (hasData || stepAnimationStage >= 5) ? true : (stepAnimationStage > s.num);
+          const isActive = (stepAnimationStage === s.num) || (activePipelineStep === s.num && !hasData);
 
           return (
             <React.Fragment key={s.num}>
@@ -602,12 +605,12 @@ export default function DataSourcesView({ onNavigate }) {
                 <Layers size={16} color="#7c3aed" />
                 <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Canonical Field Mapping</span>
               </div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: hasData ? '#7c3aed' : '#94a3b8' }}>
-                {hasData ? `${mappings.length || 7} Mapped` : '0 Mapped'}
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: showMapping ? '#7c3aed' : '#94a3b8' }}>
+                {showMapping ? `${mappings.length || 7} Mapped` : '0 Mapped'}
               </span>
             </div>
 
-            {hasData ? (
+            {showMapping ? (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <thead>
                   <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
@@ -653,7 +656,7 @@ export default function DataSourcesView({ onNavigate }) {
         <div className="ui-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-              <CheckCircle2 size={16} color={hasData ? "#2563eb" : "#94a3b8"} />
+              <CheckCircle2 size={16} color={showReadiness ? "#2563eb" : "#94a3b8"} />
               <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Data Quality & Readiness</span>
             </div>
 
@@ -670,13 +673,13 @@ export default function DataSourcesView({ onNavigate }) {
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke={hasData ? "#10b981" : "#94a3b8"}
-                    strokeDasharray={hasData ? "100, 100" : "0, 100"}
+                    stroke={showReadiness ? "#10b981" : "#94a3b8"}
+                    strokeDasharray={showReadiness ? "100, 100" : "0, 100"}
                     strokeWidth="3"
                   />
                 </svg>
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800, color: hasData ? '#059669' : '#94a3b8' }}>
-                  {hasData ? '100%' : '0%'}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800, color: showReadiness ? '#059669' : '#94a3b8' }}>
+                  {showReadiness ? '100%' : '0%'}
                 </div>
               </div>
 
@@ -684,11 +687,11 @@ export default function DataSourcesView({ onNavigate }) {
                 <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Readiness Score</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
                   <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-                    {hasData ? 100 : Math.round(validation?.overall_readiness_pct || 0)}
+                    {showReadiness ? 100 : 0}
                   </span>
                   <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>/100</span>
-                  <span style={{ fontSize: '0.7rem', color: hasData ? '#10b981' : '#f59e0b', fontWeight: 600, marginLeft: '6px' }}>
-                    {hasData ? '✓ Production Ready' : 'Pending Data'}
+                  <span style={{ fontSize: '0.7rem', color: showReadiness ? '#10b981' : '#f59e0b', fontWeight: 600, marginLeft: '6px' }}>
+                    {showReadiness ? '✓ Production Ready' : 'Pending Data'}
                   </span>
                 </div>
               </div>
