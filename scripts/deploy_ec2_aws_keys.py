@@ -87,7 +87,7 @@ def deploy_using_aws_credentials(instance_id: str = "i-008e760e264afb4b9"):
             cp -r /tmp/supplychain_git/.git /home/ubuntu/app/
             rm -rf /tmp/supplychain_git
         fi
-        cd /home/ubuntu/app && git pull origin main
+        cd /home/ubuntu/app && git reset --hard HEAD && git pull origin main
         sudo docker system prune -af --volumes || true
         sudo docker-compose build
         sudo docker-compose down && sudo docker-compose up -d
