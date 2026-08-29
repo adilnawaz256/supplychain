@@ -110,6 +110,59 @@ export default function IntelligenceEnginesView() {
   return (
     <div style={{ padding: '0 32px 32px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
+      {/* Top Banner Alert for Multi-Agent AI Engine */}
+      <div className="ui-card" style={{
+        padding: '16px 20px',
+        backgroundColor: '#059669',
+        color: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        justify: 'space-between',
+        borderRadius: '12px',
+        boxShadow: '0 4px 14px rgba(5, 150, 105, 0.25)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '38px', height: '38px', borderRadius: '10px',
+            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <Bot size={22} color="#ffffff" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800 }}>🤖 NEW: Coordinated Multi-AI Agent Workflow Engine</div>
+            <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: '2px' }}>
+              Runs Demand Forecasting ➔ Safety Stock & ROP Optimization ➔ Batch Anomaly Detection ➔ Teams Alerts in &lt; 50ms.
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            setActiveEngine('multi_agent');
+            handleRunMultiAgentWorkflow();
+          }}
+          disabled={isRunningWorkflow}
+          style={{
+            backgroundColor: '#ffffff',
+            color: '#059669',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '9px 18px',
+            fontSize: '0.85rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}
+        >
+          {isRunningWorkflow ? <RefreshCw size={16} className="animate-spin" /> : <Zap size={16} />}
+          <span>{isRunningWorkflow ? 'Running Workflow...' : 'Run Multi-Agent Workflow'}</span>
+        </button>
+      </div>
+
       {/* 5 Engine Switcher Tabs */}
       <div style={{
         display: 'grid',
