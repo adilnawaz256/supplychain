@@ -124,6 +124,11 @@ server {
 }
 EOF
         sudo systemctl restart nginx
+        sleep 3
+        echo "=== BACKEND DOCKER STATUS ==="
+        sudo docker ps -a
+        echo "=== BACKEND DOCKER LOGS ==="
+        sudo docker-compose logs --tail=100 backend
         """
         stdin, stdout, stderr = ssh.exec_command(deploy_cmd)
         out = stdout.read().decode()
