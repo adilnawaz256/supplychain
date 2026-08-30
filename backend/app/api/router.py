@@ -577,33 +577,35 @@ def export_bi_csv(db: Session = Depends(get_db)):
     return Response(content=csv_data, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=wisualyst_bi_dataset.csv"})
 
 # --- AI Agent Chat & Multi-Agent Workflow ---
-from ai.multi_agent.workflow import MultiAgentSupplyChainWorkflow
-
 @router.post("/api/agents/multi-agent-workflow/run", tags=["Multi-Agent AI Engine"])
 def run_multi_agent_workflow(auto_dispatch_teams: bool = True, db: Session = Depends(get_db)):
-    workflow = MultiAgentSupplyChainWorkflow(db)
-    res = workflow.execute_workflow(auto_dispatch_teams=auto_dispatch_teams)
-    return {
-        "status": "SUCCESS",
-        "timestamp": res.timestamp,
-        "total_execution_ms": res.total_execution_ms,
-        "products_scanned": res.products_scanned,
-        "anomalies_detected": res.anomalies_detected,
-        "critical_alerts_triggered": res.critical_alerts_triggered,
-        "agent_logs": [
-            {
-                "agent_name": log.agent_name,
-                "action": log.action,
-                "status": log.status,
-                "execution_ms": log.execution_ms,
-                "details": log.details
-            } for log in res.agent_logs
-        ],
-        "forecast_insights": res.forecast_insights,
-        "inventory_optimizations": res.inventory_optimizations,
-        "anomalies": res.anomalies,
-        "summary_message": res.summary_message
-    }
+    try:
+        from ai.multi_agent.workflow import MultiAgentSupplyChainWorkflow
+        workflow = MultiAgentSupplyChainWorkflow(db)
+        res = workflow.execute_workflow(auto_dispatch_teams=auto_dispatch_teams)
+        return {
+            "status": "SUCCESS",
+            "timestamp": res.timestamp,
+            "total_execution_ms": res.total_execution_ms,
+            "products_scanned": res.products_scanned,
+            "anomalies_detected": res.anomalies_detected,
+            "critical_alerts_triggered": res.critical_alerts_triggered,
+            "agent_logs": [
+                {
+                    "agent_name": log.agent_name,
+                    "action": log.action,
+                    "status": log.status,
+                    "execution_ms": log.execution_ms,
+                    "details": log.details
+                } for log in res.agent_logs
+            ],
+            "forecast_insights": res.forecast_insights,
+            "inventory_optimizations": res.inventory_optimizations,
+            "anomalies": res.anomalies,
+            "summary_message": res.summary_message
+        }
+    except Exception as e:
+        return {"status": "ERROR", "message": f"Multi-agent execution note: {e}"}
 
 @router.post("/api/ai/chat", response_model=AIChatResponse, tags=["AI Agent"])
 def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
