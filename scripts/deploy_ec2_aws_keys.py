@@ -93,6 +93,37 @@ def deploy_using_aws_credentials(instance_id: str = "i-008e760e264afb4b9"):
         sudo docker system prune -af --volumes || true
         sudo docker-compose build
         sudo docker-compose down && sudo docker-compose up -d
+
+        # Configure Host System Nginx Reverse Proxy for Port 80
+        cat << 'EOF' | sudo tee /etc/nginx/sites-available/default
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
+        sudo systemctl restart nginx
         """
         stdin, stdout, stderr = ssh.exec_command(deploy_cmd)
         out = stdout.read().decode()
