@@ -227,6 +227,7 @@ def run_seed_db(db: Session = Depends(get_db)):
 
 # --- Core Entities ---
 @router.get("/api/products", tags=["Catalog"])
+@router.get("/products", tags=["Catalog"])
 def get_products(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     prods = service.product_repo.get_all()
@@ -246,6 +247,7 @@ def get_products(db: Session = Depends(get_db)):
     } for p in prods]
 
 @router.get("/api/warehouses", tags=["Catalog"])
+@router.get("/warehouses", tags=["Catalog"])
 def get_warehouses(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     whs = service.warehouse_repo.get_all()
@@ -255,6 +257,7 @@ def get_warehouses(db: Session = Depends(get_db)):
     } for w in whs]
 
 @router.get("/api/inventory", tags=["Inventory"])
+@router.get("/inventory", tags=["Inventory"])
 def get_inventory(warehouse_id: Optional[int] = None, db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     items = service.inventory_repo.get_all(warehouse_id)
@@ -275,6 +278,7 @@ def get_inventory(warehouse_id: Optional[int] = None, db: Session = Depends(get_
     } for i in items]
 
 @router.get("/api/suppliers", tags=["Suppliers"])
+@router.get("/suppliers", tags=["Suppliers"])
 def get_suppliers(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     sups = service.supplier_repo.get_all()

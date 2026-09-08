@@ -26,20 +26,16 @@ app.include_router(router)
 @app.on_event("startup")
 def startup_event():
     print(f"Starting {settings.PROJECT_NAME} Backend...")
-    # Initialize database tables
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
     try:
-        prod_count = db.query(Product).count()
-        print(f"Database initialized. Contains {prod_count} products.")
-        if prod_count == 0:
-            from database.seeds.seed_db import seed_database
-            seed_database(db)
-            print("Database automatically seeded with initial supply chain dataset.")
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        try:
+            prod_count = db.query(Product).count()
+            print(f"Database initialized. Contains {prod_count} products.")
+        finally:
+            db.close()
     except Exception as e:
         print(f"Startup DB Check Note: {e}")
-    finally:
-        db.close()
 
 @app.get("/", tags=["Health Check"])
 def root():
