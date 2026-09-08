@@ -69,10 +69,11 @@ def test_mock_erp_connector(test_db):
 
 def test_mock_wms_connector(test_db):
     wh = test_db.query(Warehouse).first()
+    prod = test_db.query(Product).first()
     wms_payload = {
         "warehouse_code": wh.code,
         "inventory_levels": [
-            {"sku": "SKU-ELEC-101", "current_stock": 15, "allocated_stock": 2}
+            {"sku": prod.sku, "current_stock": 15, "allocated_stock": 2}
         ]
     }
     connector = MockWMSConnector()
