@@ -851,13 +851,13 @@ def get_audit_logs(db: Session = Depends(get_db)):
     return [
         {
             "id": f"aud-{l.id}",
-            "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "user": l.user_name,
-            "email": l.user_email,
+            "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if l.timestamp else "Just now",
+            "user": getattr(l, "user_name", None) or getattr(l, "user", "System Administrator"),
+            "email": getattr(l, "user_email", None) or "admin@supplychain.internal",
             "action": l.action,
-            "category": l.category or "General",
+            "category": getattr(l, "category", None) or getattr(l, "type", "General"),
             "details": l.details or "",
             "ip": l.ip_address or "127.0.0.1",
-            "severity": l.severity or "INFO"
+            "severity": getattr(l, "severity", None) or "INFO"
         } for l in logs
     ]
