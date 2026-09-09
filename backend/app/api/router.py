@@ -345,6 +345,42 @@ def get_unified_recommendations(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     return service.recommendation_engine.get_unified_recommendations()
 
+# --- Wisualyst Advanced Analytics & Optimization Modules (5 Modules) ---
+@router.get("/api/modules/pricing-optimization", tags=["Wisualyst Modules"])
+@router.get("/api/modules/advance-analytics", tags=["Wisualyst Modules"])
+def get_module_pricing_optimization(db: Session = Depends(get_db)):
+    """Module 1: Advance Analytics (Pricing Optimization, Elasticity, Demand Pattern, Newsvendor)."""
+    service = SupplyChainService(db)
+    return service.get_pricing_optimization()
+
+@router.get("/api/modules/policy-simulation", tags=["Wisualyst Modules"])
+@router.get("/api/modules/inventory-policies", tags=["Wisualyst Modules"])
+def get_module_policy_simulation(db: Session = Depends(get_db)):
+    """Module 2: Inventory Optimization (Policy Backtesting & Simulation: min_Q, base_stock, min_max, periodic, hybrid)."""
+    service = SupplyChainService(db)
+    return service.get_policy_simulation()
+
+@router.get("/api/modules/customer-ltv", tags=["Wisualyst Modules"])
+@router.get("/api/modules/customer-segmentation", tags=["Wisualyst Modules"])
+def get_module_customer_ltv(db: Session = Depends(get_db)):
+    """Module 3: Customer Segmentation and LTV (RFM scoring, KMeans clustering, ML classification)."""
+    service = SupplyChainService(db)
+    return service.get_customer_ltv()
+
+@router.get("/api/modules/market-basket", tags=["Wisualyst Modules"])
+@router.get("/api/modules/cross-sell", tags=["Wisualyst Modules"])
+def get_module_market_basket(db: Session = Depends(get_db)):
+    """Module 4: Recommendation Algorithm (Cross-sell, Apriori Association Rules, Slow-mover bundling)."""
+    service = SupplyChainService(db)
+    return service.get_market_basket()
+
+@router.get("/api/modules/trade-area", tags=["Wisualyst Modules"])
+@router.get("/api/modules/store-analysis", tags=["Wisualyst Modules"])
+def get_module_trade_area(db: Session = Depends(get_db)):
+    """Module 5: Trade Area Modelling (Store Huff gravity analysis, catchment potential, distance decay)."""
+    service = SupplyChainService(db)
+    return service.get_trade_area()
+
 # --- Wisualyst Onboarding & Data Connection Routes ---
 @router.post("/api/workspace/create", tags=["Wisualyst Onboarding"])
 def create_workspace(payload: Dict[str, Any] = Body(...)):

@@ -52,6 +52,13 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
 4. **BI Analytics Integration**:
    - Export adapters for PowerBI and Tableau formatted JSON and CSV datasets (`/api/bi/export`).
 
+5. **Advanced Analytics & Optimization Modules (Core Suite)**:
+   - **1. Advance Analytics (Pricing Optimization & Elasticity: `advance_analytics.py` / `src/advanced_analytics.py`)**: Syntetos-Boylan-Croston (SBC) demand-pattern classification (smooth, intermittent, erratic, lumpy), price elasticity fitting, linear/logit profit maximization, and single-period Newsvendor seasonal ordering (`/api/modules/pricing-optimization`).
+   - **2. Inventory Optimization (Policies: `src/policy_simulation.py`)**: Multi-policy continuous and periodic review simulation (`min_Q`, `base_stock`, `min_max`, `periodic_review`, `hybrid`) backtested against historical demand with fill rate and holding cost benchmarking (`/api/modules/policy-simulation`).
+   - **3. Customer Segmentation and LTV (RFM & LTV: `src/customer_ltv_segmentation.py`)**: Recency-Frequency-Monetary (RFM) scoring, K-Means LTV value clustering (Low, Mid, High tiers), and Random Forest supervised churn risk prediction (`/api/modules/customer-ltv`).
+   - **4. Recommendation Algorithm (Cross-Sell: `src/market_basket_analysis.py`)**: Apriori frequent itemset mining, Support/Confidence/Lift association rules, companion bundle checkout recommendations, and bottom-octile slow-mover inventory liquidation (`/api/modules/market-basket`).
+   - **5. Trade Area Modelling (Store Analysis: `src/trade_area_modelling.py`)**: Huff Gravity model with quadratic distance decay, 7-factor composite store attractiveness evaluation, territory market potential capture, and retail site expansion planning (`/api/modules/trade-area`).
+
 ---
 
 ## Step-by-Step Quickstart Guide

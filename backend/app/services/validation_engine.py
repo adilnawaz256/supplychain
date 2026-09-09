@@ -58,7 +58,12 @@ class DataValidationEngine:
                 "inventory_ai": {"readiness_pct": inv_readiness, "status": "READY" if inv_readiness >= 50 else "PENDING_DATA"},
                 "demand_ai": {"readiness_pct": demand_readiness, "status": "READY" if demand_readiness >= 50 else "PENDING_DATA"},
                 "procurement_ai": {"readiness_pct": proc_readiness, "status": "READY" if proc_readiness >= 50 else "PENDING_DATA"},
-                "assortment_ai": {"readiness_pct": assort_readiness, "status": "READY" if assort_readiness >= 50 else "PENDING_DATA"}
+                "assortment_ai": {"readiness_pct": assort_readiness, "status": "READY" if assort_readiness >= 50 else "PENDING_DATA"},
+                "pricing_ai": {"readiness_pct": 100.0 if (product_count > 0 and sales_count > 0) else 0.0, "status": "READY" if (product_count > 0 and sales_count > 0) else "PENDING_DATA"},
+                "policy_simulation_ai": {"readiness_pct": inv_readiness, "status": "READY" if inv_readiness >= 50 else "PENDING_DATA"},
+                "customer_ltv_ai": {"readiness_pct": 100.0 if sales_count > 0 else 0.0, "status": "READY" if sales_count > 0 else "PENDING_DATA"},
+                "market_basket_ai": {"readiness_pct": 100.0 if sales_count > 0 else 0.0, "status": "READY" if sales_count > 0 else "PENDING_DATA"},
+                "trade_area_ai": {"readiness_pct": 100.0, "status": "READY"}
             },
             "dataset_summary": {
                 "products_mapped": product_count,

@@ -11,6 +11,11 @@ from ai.inventory.optimization import InventoryOptimizer
 from ai.risk.engine import InventoryRiskEngine
 from ai.procurement.engine import ProcurementOptimizerEngine
 from ai.assortment.engine import AssortmentOptimizerEngine
+from ai.pricing.engine import PricingOptimizationEngine
+from ai.policy.engine import InventoryPolicySimulationEngine
+from ai.customer.engine import CustomerLTVSegmentationEngine
+from ai.cross_sell.engine import MarketBasketRecommendationEngine
+from ai.trade_area.engine import TradeAreaModellingEngine
 from backend.app.services.recommendation_engine import UnifiedRecommendationEngine
 from backend.app.services.mapping_engine import CanonicalMappingEngine
 from backend.app.services.validation_engine import DataValidationEngine
@@ -33,6 +38,11 @@ class SupplyChainService:
         self.risk_engine = InventoryRiskEngine(db)
         self.procurement_engine = ProcurementOptimizerEngine(db)
         self.assortment_engine = AssortmentOptimizerEngine(db)
+        self.pricing_engine = PricingOptimizationEngine(db)
+        self.policy_simulation_engine = InventoryPolicySimulationEngine(db)
+        self.customer_ltv_engine = CustomerLTVSegmentationEngine(db)
+        self.market_basket_engine = MarketBasketRecommendationEngine(db)
+        self.trade_area_engine = TradeAreaModellingEngine(db)
         self.recommendation_engine = UnifiedRecommendationEngine(db)
         self.mapping_engine = CanonicalMappingEngine()
         self.validation_engine = DataValidationEngine(db)
@@ -116,3 +126,18 @@ class SupplyChainService:
 
     def get_inventory_recommendations(self) -> List[Dict[str, Any]]:
         return self.recommendation_engine.get_unified_recommendations()
+
+    def get_pricing_optimization(self) -> Dict[str, Any]:
+        return self.pricing_engine.get_pricing_intelligence()
+
+    def get_policy_simulation(self) -> Dict[str, Any]:
+        return self.policy_simulation_engine.get_policy_simulation_intelligence()
+
+    def get_customer_ltv(self) -> Dict[str, Any]:
+        return self.customer_ltv_engine.get_customer_ltv_intelligence()
+
+    def get_market_basket(self) -> Dict[str, Any]:
+        return self.market_basket_engine.get_market_basket_intelligence()
+
+    def get_trade_area(self) -> Dict[str, Any]:
+        return self.trade_area_engine.get_trade_area_intelligence()

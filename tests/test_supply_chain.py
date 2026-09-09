@@ -142,3 +142,43 @@ def test_end_to_end_flow(test_db):
     res = agent.process_query("Why is SKU-ELEC-101 at risk?")
     assert len(res["response"]) > 0
     assert res["reasoning_summary"] is not None
+
+def test_pricing_optimization_module(test_db):
+    service = SupplyChainService(test_db)
+    res = service.get_pricing_optimization()
+    assert res["module_key"] == "advance_analytics"
+    assert "summary" in res
+    assert "optimizations" in res
+    assert res["summary"]["total_skus_classified"] > 0
+
+def test_policy_simulation_module(test_db):
+    service = SupplyChainService(test_db)
+    res = service.get_policy_simulation()
+    assert res["module_key"] == "policy_simulation"
+    assert "summary" in res
+    assert len(res["policy_comparison"]) >= 3
+    assert res["summary"]["avg_simulated_fill_rate_pct"] >= 90.0
+
+def test_customer_ltv_module(test_db):
+    service = SupplyChainService(test_db)
+    res = service.get_customer_ltv()
+    assert res["module_key"] == "customer_ltv"
+    assert "summary" in res
+    assert len(res["segments_rollup"]) >= 2
+    assert res["summary"]["total_customers_analyzed"] > 0
+
+def test_market_basket_module(test_db):
+    service = SupplyChainService(test_db)
+    res = service.get_market_basket()
+    assert res["module_key"] == "market_basket"
+    assert "summary" in res
+    assert len(res["association_rules"]) > 0
+    assert res["summary"]["avg_association_lift"] > 1.0
+
+def test_trade_area_module(test_db):
+    service = SupplyChainService(test_db)
+    res = service.get_trade_area()
+    assert res["module_key"] == "trade_area"
+    assert "summary" in res
+    assert len(res["stores"]) >= 3
+    assert res["summary"]["trade_areas_count"] > 0

@@ -92,6 +92,31 @@ class MCPToolRegistry:
                 "name": "get_control_tower_summary",
                 "description": "Get executive high-level Control Tower metrics including total stock value, stockout risk counts, open POs, and top risk SKUs.",
                 "parameters": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "get_pricing_optimization",
+                "description": "Get advance analytics pricing optimization, price elasticity, and Syntetos-Boylan-Croston demand pattern classification.",
+                "parameters": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "get_policy_simulation",
+                "description": "Get inventory review policy simulation benchmarks (min_Q, base_stock, min_max, periodic, hybrid) with fill rates and holding costs.",
+                "parameters": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "get_customer_ltv_segments",
+                "description": "Get customer RFM scores, LTV cluster tiers (Low, Mid, High), and churn risk segmentation.",
+                "parameters": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "get_market_basket_recommendations",
+                "description": "Get cross-sell association rules (Lift > 1.0), companion product bundles, and slow-mover liquidation attachments.",
+                "parameters": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "get_trade_area_analysis",
+                "description": "Get retail trade area catchment analysis, store attractiveness scores, and Huff gravity expected dollar capture.",
+                "parameters": {"type": "object", "properties": {}}
             }
         ]
 
@@ -142,6 +167,21 @@ class MCPToolRegistry:
 
         elif name == "get_control_tower_summary":
             return self.service.get_control_tower_summary()
+
+        elif name == "get_pricing_optimization":
+            return self.service.get_pricing_optimization()
+
+        elif name == "get_policy_simulation":
+            return self.service.get_policy_simulation()
+
+        elif name == "get_customer_ltv_segments":
+            return self.service.get_customer_ltv()
+
+        elif name == "get_market_basket_recommendations":
+            return self.service.get_market_basket()
+
+        elif name == "get_trade_area_analysis":
+            return self.service.get_trade_area()
 
         else:
             raise ValueError(f"Unknown MCP tool: {name}")
