@@ -1,10 +1,11 @@
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Dict, Any, Optional
 from backend.app.repositories.repositories import (
     ProductRepository, WarehouseRepository, InventoryRepository, SalesRepository, SupplierRepository
 )
-from backend.app.models.models import Order, PurchaseOrder, SalesHistory
+from backend.app.models.models import Product, Warehouse, Inventory, Order, PurchaseOrder, SalesHistory
 from ai.forecasting.engine import StatisticalForecastEngine
 from ai.inventory.optimization import InventoryOptimizer
 from ai.risk.engine import InventoryRiskEngine
@@ -42,15 +43,15 @@ class SupplyChainService:
         if (now - SUMMARY_CACHE["timestamp"]) < 30 and SUMMARY_CACHE["data"]:
             return SUMMARY_CACHE["data"]
 
-        products = self.product_repo.get_all()
-        warehouses = self.warehouse_repo.get_all()
-        inventory_items = self.inventory_repo.get_all()
-        
-        if not products:
+        total_prods = self.db.query(Product).count()
+        total_whs = self.db.query(Warehouse).count()
+        total_inv_items = self.db.query(Inventory).count()
+
+        if total_prods == 0:
             readiness = self.validation_engine.evaluate_readiness()
             res = {
                 "total_products": 0,
-                "total_warehouses": len(warehouses),
+                "total_warehouses": total_whs,
                 "total_inventory_items": 0,
                 "total_inventory_value": 0.0,
                 "stockout_critical_count": 0,
@@ -67,28 +68,33 @@ class SupplyChainService:
             SUMMARY_CACHE["timestamp"] = now
             SUMMARY_CACHE["data"] = res
             return res
-        
-        total_inv_value = sum(item.current_stock * item.product.unit_cost for item in inventory_items if item.product)
-        
+
+        # Fast SQL sum for total inventory value
+        total_inv_value = float(
+            self.db.query(func.coalesce(func.sum(Inventory.current_stock * Product.unit_cost), 0.0))
+            .join(Product, Inventory.product_id == Product.id)
+            .scalar() or 0.0
+        )
+
         risks = self.risk_engine.get_all_inventory_risks()
         critical_count = sum(1 for r in risks if r["stockout_risk_level"] == "CRITICAL")
         high_count = sum(1 for r in risks if r["stockout_risk_level"] == "HIGH")
         excess_count = sum(1 for r in risks if r["stockout_risk_level"] == "LOW")
 
         open_pos = self.db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(["PENDING", "ISSUED"])).count()
-        
-        # 30 day sales revenue
-        sales_30d = self.db.query(SalesHistory.revenue).all()
-        rev_total = sum(s[0] for s in sales_30d) if sales_30d else 0.0
+
+        # Fast SQL sum for sales revenue
+        rev_total = float(
+            self.db.query(func.coalesce(func.sum(SalesHistory.revenue), 0.0)).scalar() or 0.0
+        )
 
         top_risks = [r for r in risks if r["stockout_risk_level"] in ["CRITICAL", "HIGH"]][:10]
-
         readiness = self.validation_engine.evaluate_readiness()
 
         res = {
-            "total_products": len(products),
-            "total_warehouses": len(warehouses),
-            "total_inventory_items": len(inventory_items),
+            "total_products": total_prods,
+            "total_warehouses": total_whs,
+            "total_inventory_items": total_inv_items,
             "total_inventory_value": round(total_inv_value, 2),
             "stockout_critical_count": critical_count,
             "stockout_high_count": high_count,
@@ -99,7 +105,10 @@ class SupplyChainService:
             "potential_savings": 45000.0,
             "avg_supplier_otif": 94.5,
             "avg_store_gmroi": 3.8,
-            "overall_readiness_pct": readiness.get("overall_readiness_pct", 100.0)
+            "overall_readiness_pct": readiness.get("overall_readiness_pct", 100.0),
+            "modules_readiness": readiness.get("modules", {}),
+            "dataset_summary": readiness.get("dataset_summary", {}),
+            "can_launch_workspace": readiness.get("can_launch_workspace", True)
         }
         SUMMARY_CACHE["timestamp"] = now
         SUMMARY_CACHE["data"] = res

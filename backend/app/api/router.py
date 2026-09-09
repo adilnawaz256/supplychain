@@ -456,7 +456,14 @@ def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(g
         return {"tables": ZohoConnector().discover_modules()}
     else:
         from connectors.sftp_connector import SFTPConnector
-        return {"tables": SFTPConnector().discover_files()}
+        connector = SFTPConnector(
+            host=payload.get("host", ""),
+            port=payload.get("port", 22),
+            username=payload.get("username", ""),
+            password=payload.get("password", ""),
+            remote_path=payload.get("remote_path", "/exports/daily_feeds")
+        )
+        return {"tables": connector.discover_files()}
 
 @router.post("/api/mapping/suggest", tags=["Wisualyst Onboarding"])
 def suggest_mapping(payload: Dict[str, Any] = Body(...)):

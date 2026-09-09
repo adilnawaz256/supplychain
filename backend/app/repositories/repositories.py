@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from backend.app.models.models import (
     Product, Warehouse, Inventory, SalesHistory, Supplier, Order, PurchaseOrder, ProductCategory
@@ -9,7 +9,7 @@ class ProductRepository:
         self.db = db
 
     def get_all(self, skip: int = 0, limit: int = 100) -> List[Product]:
-        return self.db.query(Product).offset(skip).limit(limit).all()
+        return self.db.query(Product).options(joinedload(Product.category)).offset(skip).limit(limit).all()
 
     def get_by_id(self, product_id: int) -> Optional[Product]:
         return self.db.query(Product).filter(Product.id == product_id).first()
@@ -32,7 +32,10 @@ class InventoryRepository:
         self.db = db
 
     def get_all(self, warehouse_id: Optional[int] = None) -> List[Inventory]:
-        query = self.db.query(Inventory)
+        query = self.db.query(Inventory).options(
+            joinedload(Inventory.product),
+            joinedload(Inventory.warehouse)
+        )
         if warehouse_id:
             query = query.filter(Inventory.warehouse_id == warehouse_id)
         return query.all()

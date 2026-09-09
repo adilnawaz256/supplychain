@@ -19,11 +19,21 @@ class InventoryRiskEngine:
         if not warehouse_id and not risk_filter and (now - RISK_CACHE["timestamp"]) < 30 and RISK_CACHE["data"]:
             return RISK_CACHE["data"]
 
-        # 1. Fast joined query to avoid N+1 queries
-        query = self.db.query(Inventory).options(
-            joinedload(Inventory.product),
-            joinedload(Inventory.warehouse)
-        )
+        # 1. Fast flat column query to eliminate ORM loading overhead for 9,243 rows
+        query = self.db.query(
+            Inventory.product_id,
+            Inventory.warehouse_id,
+            Inventory.current_stock,
+            Inventory.reserved_stock,
+            Product.sku,
+            Product.name.label("product_name"),
+            Product.lead_time_days,
+            Product.safety_stock_min,
+            Product.reorder_point,
+            Warehouse.name.label("warehouse_name")
+        ).join(Product, Inventory.product_id == Product.id)\
+         .join(Warehouse, Inventory.warehouse_id == Warehouse.id)
+
         if warehouse_id:
             query = query.filter(Inventory.warehouse_id == warehouse_id)
 
@@ -43,26 +53,16 @@ class InventoryRiskEngine:
         supplier_map = {sp[0]: sp[1] for sp in sup_data}
 
         results = []
-        for inv in inventory_items:
-            prod = inv.product
-            wh = inv.warehouse
-            if not prod or not wh:
-                continue
-
-            product_id = prod.id
-            sku = prod.sku
-            product_name = prod.name
-            wh_id = wh.id
-            wh_name = wh.name
-            current_stock = inv.current_stock
-            allocated_stock = inv.allocated_stock
-            available_stock = inv.available_stock
+        for (product_id, wh_id, current_stock, reserved_stock, sku, product_name,
+             lead_time_days, safety_stock_min, reorder_point, wh_name) in inventory_items:
+            allocated_stock = reserved_stock or 0
+            available_stock = max(0, (current_stock or 0) - allocated_stock)
             
             avg_daily_demand = max(avg_demand_map.get(product_id, 5.0), 0.1)
             forecast_7d = round(avg_daily_demand * 7, 1)
-            lead_time = prod.lead_time_days or 7
-            safety_stock = prod.safety_stock_min or 15
-            rop = prod.reorder_point or 25
+            lead_time = lead_time_days or 7
+            safety_stock = safety_stock_min or 15
+            rop = reorder_point or 25
             doi = round(current_stock / avg_daily_demand, 1)
             rec_order_qty = max(0, (rop * 2) - current_stock)
             supplier_name = supplier_map.get(product_id, "Primary Vendor")

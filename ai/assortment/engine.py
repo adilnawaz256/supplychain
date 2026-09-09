@@ -1,5 +1,6 @@
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from backend.app.models.models import Product, RetailSpace, Inventory, SalesHistory
 
 class AssortmentOptimizerEngine:
@@ -13,23 +14,33 @@ class AssortmentOptimizerEngine:
 
     def generate_assortment_intelligence(self) -> Dict[str, Any]:
         products = self.db.query(Product).all()
-        spaces = self.db.query(RetailSpace).all()
+
+        # Bulk-fetch retail space per product in 1 query instead of N+1 per-product lookups
+        space_rows = self.db.query(RetailSpace).all()
+        space_map = {sp.product_id: sp for sp in space_rows}
+
+        # Bulk-aggregate quantity sold and revenue per product via SQL GROUP BY
+        # instead of loading every SalesHistory row per product and summing in Python
+        sales_rows = self.db.query(
+            SalesHistory.product_id,
+            func.sum(SalesHistory.quantity_sold),
+            func.sum(SalesHistory.revenue)
+        ).group_by(SalesHistory.product_id).all()
+        sales_map = {row[0]: (row[1] or 0, row[2] or 0.0) for row in sales_rows}
 
         sku_assortment = []
         total_allocated_sqm = 0.0
         total_revenue = 0.0
 
         for p in products:
-            sp = self.db.query(RetailSpace).filter(RetailSpace.product_id == p.id).first()
+            sp = space_map.get(p.id)
             allocated_sqm = sp.allocated_space_sqm if sp else 0.0
             display_units = sp.display_units if sp else 0
             shelf_cap = sp.shelf_capacity if sp else 0
             total_allocated_sqm += allocated_sqm
 
             # Sales history calculation
-            sales = self.db.query(SalesHistory).filter(SalesHistory.product_id == p.id).all()
-            qty_sold = sum(s.quantity_sold for s in sales) if sales else 0
-            revenue = sum(s.revenue for s in sales) if sales else 0.0
+            qty_sold, revenue = sales_map.get(p.id, (0, 0.0))
             total_revenue += revenue
 
             # Gross Margin & GMROI

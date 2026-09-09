@@ -16,6 +16,16 @@ class ProcurementOptimizerEngine:
         products = self.db.query(Product).all()
         suppliers = self.db.query(Supplier).all()
 
+        # Bulk-fetch stock for every product in 1 query instead of N+1 per-product lookups.
+        # available_stock is a computed Python property (current_stock - reserved_stock),
+        # not a DB column, so it can't be summed in SQL - aggregate it here instead, across
+        # every warehouse holding the product.
+        stock_map: Dict[int, int] = {}
+        for inv in self.db.query(Inventory.product_id, Inventory.current_stock, Inventory.reserved_stock).all():
+            product_id, current_stock, reserved_stock = inv
+            available = max(0, (current_stock or 0) - (reserved_stock or 0))
+            stock_map[product_id] = stock_map.get(product_id, 0) + available
+
         total_open_po_cost = 0.0
         po_list = self.db.query(PurchaseOrder).all()
         for po in po_list:
@@ -38,8 +48,7 @@ class ProcurementOptimizerEngine:
         total_potential_savings = 0.0
 
         for p in products:
-            inv = self.db.query(Inventory).filter(Inventory.product_id == p.id).first()
-            current_qty = inv.available_stock if inv else 0
+            current_qty = stock_map.get(p.id, 0)
             
             if current_qty <= p.reorder_point:
                 # Calculate EOQ: sqrt((2 * Demand * OrderingCost) / HoldingCost)

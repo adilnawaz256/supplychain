@@ -1,9 +1,12 @@
+import time
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from backend.app.models.models import Product, Inventory, Supplier, PurchaseOrder
 from ai.risk.engine import InventoryRiskEngine
 from ai.procurement.engine import ProcurementOptimizerEngine
 from ai.assortment.engine import AssortmentOptimizerEngine
+
+UNIFIED_REC_CACHE: Dict[str, Any] = {"timestamp": 0, "data": []}
 
 class UnifiedRecommendationEngine:
     """
@@ -17,6 +20,11 @@ class UnifiedRecommendationEngine:
         self.assortment_engine = AssortmentOptimizerEngine(db)
 
     def get_unified_recommendations(self) -> List[Dict[str, Any]]:
+        global UNIFIED_REC_CACHE
+        now = time.time()
+        if (now - UNIFIED_REC_CACHE["timestamp"]) < 30 and UNIFIED_REC_CACHE["data"]:
+            return UNIFIED_REC_CACHE["data"]
+
         recommendations = []
         rec_counter = 1
 
