@@ -89,9 +89,9 @@ def deploy_using_aws_credentials(instance_id: str = "i-008e760e264afb4b9"):
         fi
         sudo systemctl enable docker
         sudo systemctl enable docker.socket
-        cd /home/ubuntu/app && git reset --hard HEAD && git pull origin main
+        cd /home/ubuntu/app && git fetch origin && git reset --hard origin/main
         sudo docker system prune -af --volumes || true
-        sudo docker-compose build
+        sudo docker-compose build --no-cache
         sudo docker-compose down && sudo docker-compose up -d
 
         # Configure Host System Nginx Reverse Proxy for Port 80
@@ -157,7 +157,7 @@ EOF
             DocumentName='AWS-RunShellScript',
             Parameters={'commands': [
                 'if [ ! -d "/home/ubuntu/app/.git" ]; then mkdir -p /home/ubuntu/app && git clone https://github.com/adilnawaz256/supplychain.git /home/ubuntu/app; fi',
-                'cd /home/ubuntu/app && git reset --hard HEAD && git pull origin main',
+                'cd /home/ubuntu/app && git fetch origin && git reset --hard origin/main',
                 'if [ ! -f "/home/ubuntu/app/.env" ]; then cp /home/ubuntu/app/.env.example /home/ubuntu/app/.env; fi',
                 'cd /home/ubuntu/app && sudo docker-compose down && sudo docker-compose up --build -d'
             ]}
