@@ -31,6 +31,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
   const [products, setProducts] = useState([]);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [forecastData, setForecastData] = useState([]);
+  const [forecastHorizon, setForecastHorizon] = useState(7);
+  const [forecastMeta, setForecastMeta] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,21 +79,37 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
     loadData();
   }, []);
 
-  // Fetch real forecast when selected product changes
+  // Fetch real forecast when selected product or horizon changes
   useEffect(() => {
     if (!selectedProductId) return;
     async function loadForecast() {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/forecast/${selectedProductId}?horizon_days=7`);
+        const res = await fetch(`${API_BASE_URL}/api/forecast/${selectedProductId}?horizon_days=${forecastHorizon}`);
         if (res.ok) {
           const data = await res.json();
+          setForecastMeta(data);
           const points = data.forecast_data || data.forecast_points || [];
           if (points.length > 0) {
+            const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
             const chartPoints = points.map((pt, idx) => {
               const fVal = pt.forecasted_demand ?? pt.predicted_demand ?? 0;
               const hist = data.historical_points?.[idx]?.actual_demand ?? Math.round(fVal * (0.88 + (idx % 3) * 0.06));
+              
+              let formattedDate = `Day ${idx + 1}`;
+              if (pt.date && pt.date.includes('-')) {
+                const parts = pt.date.split('-');
+                if (parts.length === 3) {
+                  const m = parseInt(parts[1], 10) - 1;
+                  const d = parseInt(parts[2], 10);
+                  formattedDate = `${monthNames[m] || parts[1]} ${d}`;
+                } else {
+                  formattedDate = pt.date.substring(5);
+                }
+              }
+
               return {
-                date: pt.date ? pt.date.substring(5) : `Day ${idx + 1}`,
+                date: formattedDate,
+                fullDate: pt.date,
                 forecast: Math.round(fVal),
                 actual: Math.round(hist),
                 upperConf: Math.round(pt.upper_bound ?? fVal * 1.2),
@@ -107,7 +125,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
       }
     }
     loadForecast();
-  }, [selectedProductId]);
+  }, [selectedProductId, forecastHorizon]);
 
   // Derived real KPI metrics from backend summary
   const hasConnectedSources = (() => {
@@ -347,51 +365,142 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '16px'
+            marginBottom: '14px',
+            flexWrap: 'wrap',
+            gap: '10px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>Forecast vs Actual</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>Forecast vs Actual Demand</span>
                 <Info size={15} color="#94a3b8" />
               </div>
+              {forecastMeta && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    backgroundColor: '#eff6ff',
+                    color: '#2563eb'
+                  }}>
+                    {forecastMeta.total_forecasted_demand} units ({forecastHorizon}d)
+                  </span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    backgroundColor: '#ecfdf5',
+                    color: '#059669'
+                  }}>
+                    MAE {forecastMeta.mae} • 95% Conf
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Product SKU Selector */}
-            {products.length > 0 && (
-              <div style={{ position: 'relative' }}>
-                <select
-                  value={selectedProductId || ''}
-                  onChange={(e) => setSelectedProductId(+e.target.value)}
-                  className="ui-select"
-                  style={{ padding: '6px 28px 6px 12px', fontSize: '0.8rem' }}
-                >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.sku}: {p.name.substring(0, 24)}...
-                    </option>
-                  ))}
-                </select>
+            {/* Product SKU Selector & Horizon Switcher */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {products.length > 0 && (
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={selectedProductId || ''}
+                    onChange={(e) => setSelectedProductId(+e.target.value)}
+                    className="ui-select"
+                    style={{ padding: '6px 26px 6px 10px', fontSize: '0.78rem', maxWidth: '230px' }}
+                  >
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.sku}: {p.name.substring(0, 22)}...
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* 7D / 14D / 30D Horizon Switcher */}
+              <div style={{
+                display: 'flex',
+                backgroundColor: '#f1f5f9',
+                borderRadius: '8px',
+                padding: '2px',
+                border: '1px solid #e2e8f0'
+              }}>
+                {[7, 14, 30].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setForecastHorizon(d)}
+                    style={{
+                      border: 'none',
+                      backgroundColor: forecastHorizon === d ? '#ffffff' : 'transparent',
+                      color: forecastHorizon === d ? '#2563eb' : '#64748b',
+                      boxShadow: forecastHorizon === d ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {d}D
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+          </div>
+
+          {/* Chart Legend Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '12px', fontSize: '0.74rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#1e293b', fontWeight: 600 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#2563eb', display: 'inline-block' }}></span>
+              <span>AI Demand Forecast</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b', fontWeight: 600 }}>
+              <span style={{ width: 10, height: 3, backgroundColor: '#6366f1', display: 'inline-block', borderRadius: 2 }}></span>
+              <span>Actual Orders</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#94a3b8' }}>
+              <span style={{ width: 12, height: 7, backgroundColor: 'rgba(37,99,235,0.14)', display: 'inline-block', borderRadius: 2 }}></span>
+              <span>95% Confidence Band</span>
+            </div>
           </div>
 
           {/* Chart or Empty Placeholder */}
           {products.length > 0 && forecastData.length > 0 ? (
-            <div style={{ width: '100%', height: '240px' }}>
+            <div style={{ width: '100%', height: '235px' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={forecastData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <ComposedChart data={forecastData} margin={{ top: 8, right: 10, left: -15, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="overviewAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.01}/>
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="date" tickLine={false} axisLine={{ stroke: '#e2e8f0' }} tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="forecast" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3, fill: '#2563eb' }} />
-                  <Line type="monotone" dataKey="actual" stroke="#6366f1" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 2.5, fill: '#6366f1' }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      borderRadius: '8px',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '0.78rem',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                    labelStyle={{ color: '#94a3b8', fontWeight: 600, marginBottom: '4px' }}
+                  />
+                  <Area type="monotone" dataKey="upperConf" stroke="none" fill="url(#overviewAreaGrad)" name="Upper 95% Bound" />
+                  <Line type="monotone" dataKey="forecast" stroke="#2563eb" strokeWidth={2.8} dot={{ r: 3.5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 1.5 }} activeDot={{ r: 5 }} name="AI Forecast (Units)" />
+                  <Line type="monotone" dataKey="actual" stroke="#6366f1" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 2.5, fill: '#6366f1', stroke: '#ffffff', strokeWidth: 1.5 }} name="Actual (Units)" />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           ) : (
             <div style={{
-              height: '240px',
+              height: '235px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',

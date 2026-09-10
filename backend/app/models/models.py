@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum, Index, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -333,3 +333,20 @@ class PermissionSetting(Base):
     da_access = Column(Integer, default=1)
     om_access = Column(Integer, default=1)
     viewer_access = Column(Integer, default=0)
+
+class ProductForecast(Base):
+    __tablename__ = "product_forecasts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    warehouse_id = Column(Integer, default=0, index=True)
+    horizon_days = Column(Integer, default=30)
+    total_forecasted_demand = Column(Float, default=0.0)
+    confidence_interval_pct = Column(Float, default=95.0)
+    mae = Column(Float, default=0.0)
+    rmse = Column(Float, default=0.0)
+    forecast_data = Column(JSON, nullable=True)
+    historical_points = Column(JSON, nullable=True)
+    model_name = Column(String(100), default="Statistical ML / Croston Intermittent Model")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+

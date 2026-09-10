@@ -138,10 +138,22 @@ export default function IntelligenceEnginesView() {
   };
 
   const forecastPoints = demandData?.forecast_data || demandData?.forecast_points || [];
+  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const chartData = forecastPoints.map((pt, i) => {
     const baselineVal = pt.forecasted_demand ?? pt.predicted_demand ?? 0;
+    let formattedDate = `Day ${i + 1}`;
+    if (pt.date && pt.date.includes('-')) {
+      const parts = pt.date.split('-');
+      if (parts.length === 3) {
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        formattedDate = `${monthNames[m] || parts[1]} ${d}`;
+      } else {
+        formattedDate = pt.date.substring(5);
+      }
+    }
     return {
-      date: pt.date ? pt.date.substring(5) : `Day ${i + 1}`,
+      date: formattedDate,
       baseline: Math.round(baselineVal),
       simulated: Math.round(baselineVal * (1 + demandShift / 100)),
       safetyThreshold: Math.round(pt.lower_bound ?? baselineVal * 0.8)

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class CategoryBase(BaseModel):
@@ -98,6 +98,9 @@ class ForecastResponse(BaseModel):
     mae: float
     rmse: float
     forecast_data: List[ForecastPoint]
+    historical_points: Optional[List[Dict[str, Any]]] = None
+    model_name: Optional[str] = "Statistical ML / Croston Intermittent Model"
+
 
 class RiskAssessment(BaseModel):
     product_id: int
