@@ -4,7 +4,7 @@ import json
 import csv
 import io
 from sqlalchemy.orm import Session
-from ai.risk.engine import InventoryRiskEngine
+from backend.ml.risk.engine import InventoryRiskEngine
 
 class BaseBIAdapter(ABC):
     @abstractmethod

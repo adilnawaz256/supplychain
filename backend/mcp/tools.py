@@ -2,8 +2,8 @@ import json
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from backend.app.services.services import SupplyChainService
-from ai.forecasting.engine import StatisticalForecastEngine
-from ai.risk.engine import InventoryRiskEngine
+from backend.ml.forecasting.engine import StatisticalForecastEngine
+from backend.ml.risk.engine import InventoryRiskEngine
 
 class MCPToolRegistry:
     """

@@ -6,16 +6,16 @@ from backend.app.repositories.repositories import (
     ProductRepository, WarehouseRepository, InventoryRepository, SalesRepository, SupplierRepository
 )
 from backend.app.models.models import Product, Warehouse, Inventory, Order, PurchaseOrder, SalesHistory, Supplier
-from ai.forecasting.engine import StatisticalForecastEngine
-from ai.inventory.optimization import InventoryOptimizer
-from ai.risk.engine import InventoryRiskEngine
-from ai.procurement.engine import ProcurementOptimizerEngine
-from ai.assortment.engine import AssortmentOptimizerEngine
-from ai.pricing.engine import PricingOptimizationEngine
-from ai.policy.engine import InventoryPolicySimulationEngine
-from ai.customer.engine import CustomerLTVSegmentationEngine
-from ai.cross_sell.engine import MarketBasketRecommendationEngine
-from ai.trade_area.engine import TradeAreaModellingEngine
+from backend.ml.forecasting.engine import StatisticalForecastEngine
+from backend.ml.inventory.optimization import InventoryOptimizer
+from backend.ml.risk.engine import InventoryRiskEngine
+from backend.ml.procurement.engine import ProcurementOptimizerEngine
+from backend.ml.assortment.engine import AssortmentOptimizerEngine
+from backend.ml.pricing.engine import PricingOptimizationEngine
+from backend.ml.policy.engine import InventoryPolicySimulationEngine
+from backend.ml.customer.engine import CustomerLTVSegmentationEngine
+from backend.ml.cross_sell.engine import MarketBasketRecommendationEngine
+from backend.ml.trade_area.engine import TradeAreaModellingEngine
 from backend.app.services.recommendation_engine import UnifiedRecommendationEngine
 from backend.app.services.mapping_engine import CanonicalMappingEngine
 from backend.app.services.validation_engine import DataValidationEngine

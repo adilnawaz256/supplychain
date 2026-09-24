@@ -2,9 +2,9 @@ import time
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from backend.app.models.models import Product, Inventory, Supplier, PurchaseOrder
-from ai.risk.engine import InventoryRiskEngine
-from ai.procurement.engine import ProcurementOptimizerEngine
-from ai.assortment.engine import AssortmentOptimizerEngine
+from backend.ml.risk.engine import InventoryRiskEngine
+from backend.ml.procurement.engine import ProcurementOptimizerEngine
+from backend.ml.assortment.engine import AssortmentOptimizerEngine
 
 UNIFIED_REC_CACHE: Dict[str, Any] = {"timestamp": 0, "data": []}
 
