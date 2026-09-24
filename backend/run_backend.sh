@@ -12,5 +12,5 @@ if [ -d "venv" ]; then
     source venv/bin/activate
 fi
 
-export PYTHONPATH=.
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/backend"
 python3 -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload

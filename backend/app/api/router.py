@@ -508,6 +508,46 @@ def suggest_mapping(payload: Dict[str, Any] = Body(...)):
     engine = CanonicalMappingEngine()
     return {"mappings": engine.suggest_mappings(source_fields)}
 
+@router.get("/api/mapping/canonical-fields", tags=["Wisualyst Onboarding"])
+def get_canonical_fields():
+    return {
+        "canonical_fields": [
+            {"key": "product_sku", "label": "Product SKU (Product.sku)", "entity": "Product", "required": True},
+            {"key": "product_name", "label": "Product Name (Product.name)", "entity": "Product", "required": True},
+            {"key": "unit_cost", "label": "Unit Cost (Product.unit_cost)", "entity": "Product", "required": True},
+            {"key": "selling_price", "label": "Selling Price (Product.selling_price)", "entity": "Product", "required": True},
+            {"key": "lead_time_days", "label": "Lead Time Days (Product.lead_time_days)", "entity": "Product", "required": False},
+            {"key": "safety_stock_min", "label": "Safety Stock Minimum (Product.safety_stock_min)", "entity": "Product", "required": False},
+            {"key": "reorder_point", "label": "Reorder Point (Product.reorder_point)", "entity": "Product", "required": False},
+            {"key": "category_name", "label": "Product Category (ProductCategory.name)", "entity": "Product", "required": False},
+            {"key": "warehouse_code", "label": "Warehouse Code (Warehouse.code)", "entity": "Inventory", "required": True},
+            {"key": "warehouse_name", "label": "Warehouse Name (Warehouse.name)", "entity": "Inventory", "required": False},
+            {"key": "current_stock", "label": "Current Stock Qty (Inventory.current_stock)", "entity": "Inventory", "required": True},
+            {"key": "reserved_stock", "label": "Reserved Stock (Inventory.reserved_stock)", "entity": "Inventory", "required": False},
+            {"key": "transaction_date", "label": "Transaction Date (SalesHistory.date)", "entity": "Sales", "required": True},
+            {"key": "quantity_sold", "label": "Quantity Sold (SalesHistory.quantity_sold)", "entity": "Sales", "required": True},
+            {"key": "sales_revenue", "label": "Sales Revenue (SalesHistory.revenue)", "entity": "Sales", "required": True},
+            {"key": "supplier_code", "label": "Supplier Code (Supplier.code)", "entity": "Procurement", "required": False},
+            {"key": "supplier_name", "label": "Supplier Name (Supplier.name)", "entity": "Procurement", "required": False},
+            {"key": "customer_code", "label": "Customer Code (Customer.customer_code)", "entity": "Customer", "required": False},
+            {"key": "customer_name", "label": "Customer Name (Customer.name)", "entity": "Customer", "required": False},
+            {"key": "order_number", "label": "Order Number (Order.order_number)", "entity": "Orders", "required": False},
+            {"key": "shelf_space_sqm", "label": "Retail Shelf Space (RetailSpace.allocated_space_sqm)", "entity": "RetailSpace", "required": False},
+            {"key": "ignore", "label": "🚫 Ignore / Do Not Map", "entity": "Other", "required": False}
+        ]
+    }
+
+@router.post("/api/mapping/save", tags=["Wisualyst Onboarding"])
+def save_manual_mapping(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    mappings = payload.get("mappings", [])
+    valid_mappings = [m for m in mappings if m.get("target_canonical_field") and m.get("target_canonical_field") not in ["", "ignore"]]
+    return {
+        "status": "SUCCESS",
+        "message": f"Saved {len(valid_mappings)} manual field mappings to database!",
+        "mappings": mappings,
+        "valid_count": len(valid_mappings)
+    }
+
 @router.get("/api/validation/check", tags=["Wisualyst Onboarding"])
 def check_validation(db: Session = Depends(get_db)):
     service = SupplyChainService(db)

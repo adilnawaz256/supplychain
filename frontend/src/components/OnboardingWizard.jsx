@@ -4,6 +4,7 @@ import {
   Layers, Shield, Zap, Sparkles, AlertTriangle, FileText, Check, ChevronRight, Globe, AlertCircle, Key
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import { CANONICAL_DB_GROUPS } from '../config/canonicalFields';
 
 export default function OnboardingWizard({ onComplete }) {
   const [step, setStep] = useState(1);
@@ -53,6 +54,7 @@ export default function OnboardingWizard({ onComplete }) {
   const [testing, setTesting] = useState(false);
   const [discoveredTables, setDiscoveredTables] = useState([]);
   const [fieldMappings, setFieldMappings] = useState([]);
+  const [newHeaderInput, setNewHeaderInput] = useState('');
   const [validationResult, setValidationResult] = useState(null);
 
   const toggleModule = (mod) => {
@@ -141,27 +143,38 @@ export default function OnboardingWizard({ onComplete }) {
     }
   };
 
-  // Suggest Mapping for discovered fields
+  // Suggest Mapping for discovered fields (defaults to empty target for manual select box mapping)
   const handleSuggestMapping = async () => {
+    if (fieldMappings && fieldMappings.length > 0) return;
     const allCols = [];
     discoveredTables.forEach(t => {
       if (t.columns) allCols.push(...t.columns);
     });
     const fieldsToMap = allCols.length > 0 ? allCols : ["ItemCode", "ItemDescription", "WarehouseCode", "QtyOnHand", "TxnDate", "NetAmount", "SupplierCode"];
+    // Set fieldMappings with empty selection for manual select box mapping (no automatic mapping)
+    setFieldMappings(fieldsToMap.map(f => ({ source_field: f, target_canonical: '' })));
+  };
 
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/mapping/suggest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_fields: fieldsToMap })
-      });
-      const data = await res.json();
-      if (data.mappings) {
-        setFieldMappings(data.mappings);
-      }
-    } catch (err) {
-      console.error("Error suggesting mapping:", err);
+  const handleFieldMappingChange = (index, targetVal) => {
+    setFieldMappings(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], target_canonical: targetVal };
+      return updated;
+    });
+  };
+
+  const handleAddHeader = () => {
+    const trimmed = newHeaderInput.trim();
+    if (!trimmed) return;
+    if (fieldMappings.some(m => m.source_field.toLowerCase() === trimmed.toLowerCase())) {
+      return;
     }
+    setFieldMappings(prev => [...prev, { source_field: trimmed, target_canonical: '' }]);
+    setNewHeaderInput('');
+  };
+
+  const handleRemoveField = (index) => {
+    setFieldMappings(prev => prev.filter((_, i) => i !== index));
   };
 
   // Check Data Quality Validation
@@ -599,17 +612,143 @@ export default function OnboardingWizard({ onComplete }) {
         {/* Step 8: Field Mapping */}
         {step === 8 && (
           <div>
-            <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>Canonical Field Mapping</h3>
-            <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '0.85rem' }}>Map your source columns to Wisualyst canonical entities.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '6px' }}>Manual Canonical Field Mapping</h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0 }}>
+                  Manually link each incoming header to your database entity using the select dropdowns. No automated guesswork is applied.
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span className="badge" style={{
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  background: fieldMappings.filter(m => m.target_canonical).length === fieldMappings.length && fieldMappings.length > 0
+                    ? 'rgba(16, 185, 129, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                  color: fieldMappings.filter(m => m.target_canonical).length === fieldMappings.length && fieldMappings.length > 0
+                    ? '#10b981' : '#facc15',
+                  border: `1px solid ${fieldMappings.filter(m => m.target_canonical).length === fieldMappings.length && fieldMappings.length > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`,
+                  fontSize: '0.8rem',
+                  fontWeight: 600
+                }}>
+                  {fieldMappings.filter(m => m.target_canonical).length} / {fieldMappings.length} Mapped
+                </span>
+              </div>
+            </div>
+
+            {/* Quick add custom header */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input
+                type="text"
+                placeholder="Add custom header (e.g. barcode, unit_cost, safety_stock)..."
+                value={newHeaderInput}
+                onChange={e => setNewHeaderInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddHeader(); }}
+                style={{
+                  flex: 1,
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  fontSize: '0.85rem'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddHeader}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  background: 'rgba(99, 102, 241, 0.2)',
+                  border: '1px solid rgba(99, 102, 241, 0.4)',
+                  color: '#818cf8',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                + Add Header
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
               {fieldMappings.map((m, idx) => (
-                <div key={idx} style={{ padding: '12px 18px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontFamily: 'monospace', color: '#f8fafc', width: '180px' }}>{m.source_field}</span>
+                <div 
+                  key={idx} 
+                  style={{ 
+                    padding: '12px 16px', 
+                    borderRadius: '8px', 
+                    background: m.target_canonical ? 'rgba(15, 23, 42, 0.8)' : 'rgba(15, 23, 42, 0.5)', 
+                    border: `1px solid ${m.target_canonical ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.08)'}`, 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                    <span style={{ fontFamily: 'monospace', color: '#f8fafc', fontWeight: 600, minWidth: '160px' }}>
+                      {m.source_field}
+                    </span>
                     <ArrowRight size={16} color="#94a3b8" />
-                    <span style={{ fontFamily: 'monospace', color: '#818cf8', fontWeight: 600 }}>{m.suggested_canonical}</span>
+                    <div style={{ flex: 1 }}>
+                      <select
+                        value={m.target_canonical || ''}
+                        onChange={(e) => handleFieldMappingChange(idx, e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          background: '#0f172a',
+                          border: `1px solid ${m.target_canonical ? '#6366f1' : 'rgba(255,255,255,0.2)'}`,
+                          color: m.target_canonical ? '#f8fafc' : '#94a3b8',
+                          fontSize: '0.85rem',
+                          fontFamily: 'inherit',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">-- Select Target Database Field --</option>
+                        {CANONICAL_DB_GROUPS.map(group => (
+                          <optgroup key={group.group} label={group.group}>
+                            {group.fields.map(f => (
+                              <option key={f.key} value={f.key}>
+                                {f.label} ({f.key})
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <span className="badge badge-medium">{(m.confidence_score * 100).toFixed(0)}% MATCH</span>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {m.target_canonical ? (
+                      <span className="badge badge-success" style={{ fontSize: '0.75rem', padding: '4px 8px' }}>
+                        ✓ Mapped
+                      </span>
+                    ) : (
+                      <span className="badge" style={{ fontSize: '0.75rem', padding: '4px 8px', background: 'rgba(234, 179, 8, 0.15)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
+                        ⚠️ Select DB Field
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveField(idx)}
+                      title="Remove column from mapping"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        fontSize: '1rem',
+                        lineHeight: 1
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

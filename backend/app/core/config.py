@@ -1,9 +1,15 @@
 import os
 import re
 from urllib.parse import quote_plus
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+_backend_dir = Path(__file__).resolve().parent.parent.parent
+_env_path = _backend_dir / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)
+else:
+    load_dotenv()
 
 def sanitize_db_url(url: str) -> str:
     """Ensure database URL is properly formatted for SQLAlchemy with Supabase pooler compatibility."""

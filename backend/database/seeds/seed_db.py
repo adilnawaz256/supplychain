@@ -15,19 +15,26 @@ from backend.app.models.models import (
 
 def seed_database(db: Session):
     print("Initializing Database Tables...")
+    target_engine = db.bind if (db is not None and db.bind is not None) else engine
     try:
-        with engine.connect() as conn:
+        with target_engine.connect() as conn:
             with conn.begin():
                 Base.metadata.drop_all(bind=conn)
                 Base.metadata.create_all(bind=conn)
     except Exception as e:
         print(f"Re-creating tables fallback: {e}")
-        with engine.connect() as conn:
+        with target_engine.connect() as conn:
             with conn.begin():
                 Base.metadata.create_all(bind=conn)
     print("Database tables created.")
 
-    data_path = Path("data/Data.xlsx")
+    candidates = [
+        Path("data/Data.xlsx"),
+        Path("backend/data/Data.xlsx"),
+        Path(__file__).resolve().parent.parent.parent / "data" / "Data.xlsx",
+        Path(__file__).resolve().parent.parent / "data" / "Data.xlsx"
+    ]
+    data_path = next((p for p in candidates if p.exists()), candidates[2])
     if not data_path.exists():
         raise FileNotFoundError(f"Real dataset file not found at {data_path}")
 
@@ -99,10 +106,10 @@ def seed_database(db: Session):
     # 4. Extract Real Products from Data.xlsx
     print("Extracting real products from transaction panel...")
     prod_stats = df.groupby("StockCode").agg(
-        Description=("Description", lambda x: x.mode().iloc[0] if not x.mode().empty else x.iloc[0]),
+        Description=("Description", "first"),
         AvgPrice=("Price", "mean"),
         TotalQty=("Quantity", "sum"),
-        SalesDays=("InvoiceDate", lambda x: x.dt.date.nunique()),
+        SalesDays=("InvoiceDate", "nunique"),
         LeadTime=("lead_time_days", "first") if "lead_time_days" in df.columns else ("Quantity", lambda x: 14),
         Cost=("Cost", "first") if "Cost" in df.columns else ("Price", lambda x: x.mean() * 0.6)
     ).reset_index()

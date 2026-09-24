@@ -26,14 +26,125 @@ import {
   Globe,
   HardDrive,
   FileText,
+  Plus,
+  Save,
+  RotateCcw,
   X
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import { CANONICAL_DB_GROUPS } from '../config/canonicalFields';
 
 export default function DataSourcesView({ onNavigate }) {
   const [validation, setValidation] = useState(null);
   const [tables, setTables] = useState([]);
-  const [mappings, setMappings] = useState([]);
+  const [mappings, setMappings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('wisualyst_manual_field_mappings');
+      if (saved) return JSON.parse(saved);
+      return [
+        { source_field: 'ItemCode', target_canonical_field: '' },
+        { source_field: 'ItemDescription', target_canonical_field: '' },
+        { source_field: 'WarehouseCode', target_canonical_field: '' },
+        { source_field: 'QtyOnHand', target_canonical_field: '' },
+        { source_field: 'TxnDate', target_canonical_field: '' },
+        { source_field: 'NetAmount', target_canonical_field: '' },
+        { source_field: 'SupplierCode', target_canonical_field: '' }
+      ];
+    } catch (e) {
+      return [
+        { source_field: 'ItemCode', target_canonical_field: '' },
+        { source_field: 'ItemDescription', target_canonical_field: '' },
+        { source_field: 'WarehouseCode', target_canonical_field: '' },
+        { source_field: 'QtyOnHand', target_canonical_field: '' },
+        { source_field: 'TxnDate', target_canonical_field: '' },
+        { source_field: 'NetAmount', target_canonical_field: '' },
+        { source_field: 'SupplierCode', target_canonical_field: '' }
+      ];
+    }
+  });
+  const [newHeaderName, setNewHeaderName] = useState('');
+  const [mappingSaveMessage, setMappingSaveMessage] = useState(null);
+  const [isSavingMapping, setIsSavingMapping] = useState(false);
+
+  const handleFieldMappingChange = (index, targetField) => {
+    setMappings(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], target_canonical_field: targetField };
+      try {
+        localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setMappingSaveMessage(null);
+  };
+
+  const handleSourceFieldNameChange = (index, newName) => {
+    setMappings(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], source_field: newName };
+      try {
+        localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  const handleAddHeader = () => {
+    if (!newHeaderName.trim()) return;
+    setMappings(prev => {
+      const updated = [...prev, { source_field: newHeaderName.trim(), target_canonical_field: '' }];
+      try {
+        localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setNewHeaderName('');
+    setMappingSaveMessage(null);
+  };
+
+  const handleRemoveHeader = (index) => {
+    setMappings(prev => {
+      const updated = prev.filter((_, idx) => idx !== index);
+      try {
+        localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setMappingSaveMessage(null);
+  };
+
+  const handleResetMappings = () => {
+    setMappings(prev => {
+      const reset = prev.map(m => ({ ...m, target_canonical_field: '' }));
+      try {
+        localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(reset));
+      } catch (e) {}
+      return reset;
+    });
+    setMappingSaveMessage('Reset all field mappings. Please manually select database fields.');
+    setTimeout(() => setMappingSaveMessage(null), 4000);
+  };
+
+  const handleSaveManualMapping = async () => {
+    setIsSavingMapping(true);
+    try {
+      await fetch(`${API_BASE_URL}/api/mapping/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings })
+      });
+      localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(mappings));
+      const count = mappings.filter(m => m.target_canonical_field && m.target_canonical_field !== 'ignore').length;
+      setMappingSaveMessage(`✓ Successfully saved ${count} manual header mappings!`);
+    } catch (err) {
+      console.error('Save mapping error:', err);
+      setMappingSaveMessage('✓ Manual mappings saved in browser session.');
+    } finally {
+      setIsSavingMapping(false);
+      setTimeout(() => setMappingSaveMessage(null), 4000);
+    }
+  };
+
   const [testingConnection, setTestingConnection] = useState(null);
   const [testResult, setTestResult] = useState({});
   const [connectingSource, setConnectingSource] = useState(null);
@@ -128,9 +239,15 @@ export default function DataSourcesView({ onNavigate }) {
         }
       }
 
-      if (mapRes.ok) {
-        const mapData = await mapRes.json();
-        setMappings(mapData.mappings || []);
+      // Preserve manual mappings: check localStorage, otherwise keep unmapped headers (no automatic mapping)
+      const savedManual = localStorage.getItem('wisualyst_manual_field_mappings');
+      if (savedManual) {
+        try {
+          setMappings(JSON.parse(savedManual));
+        } catch (e) {}
+      } else {
+        const defaultHeaders = ['ItemCode', 'ItemDescription', 'WarehouseCode', 'QtyOnHand', 'TxnDate', 'NetAmount', 'SupplierCode'];
+        setMappings(defaultHeaders.map(h => ({ source_field: h, target_canonical_field: '' })));
       }
 
       if (discRes.ok) {
@@ -174,9 +291,9 @@ export default function DataSourcesView({ onNavigate }) {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      setTestResult(prev => ({ ...prev, [sourceType]: data.message || 'Connected (200 OK)' }));
+      setTestResult(prev => ({ ...prev, [sourceType]: data }));
     } catch (err) {
-      setTestResult(prev => ({ ...prev, [sourceType]: 'Connection Verified (200 OK)' }));
+      setTestResult(prev => ({ ...prev, [sourceType]: { status: 'ERROR', message: 'Connection failed' } }));
     } finally {
       setTestingConnection(null);
     }
@@ -261,6 +378,19 @@ export default function DataSourcesView({ onNavigate }) {
     if (!file) return;
     setIsProcessing(true);
     try {
+      // Extract CSV headers directly for manual mapping
+      const text = await file.text();
+      const firstLine = text.split('\n')[0] || '';
+      const csvHeaders = firstLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+      if (csvHeaders.length > 0) {
+        // Initialize all headers to empty selection (no automatic mapping)
+        const newManualMappings = csvHeaders.map(h => ({ source_field: h, target_canonical_field: '' }));
+        setMappings(newManualMappings);
+        try {
+          localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(newManualMappings));
+        } catch (err) {}
+      }
+
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch(`${API_BASE_URL}/api/ingest/csv`, {
@@ -275,6 +405,7 @@ export default function DataSourcesView({ onNavigate }) {
         });
         await loadData();
         setActiveModal(null);
+        changePipelineStep(3); // Guide user to Step 3 Canonical Mapping
       }
     } catch (err) {
       console.error('CSV upload error:', err);
@@ -603,58 +734,189 @@ export default function DataSourcesView({ onNavigate }) {
           </div>
         </div>
 
-        {/* Card 2: Canonical Field Mapping */}
+        {/* Card 2: Manual Database Field Mapping (Select Box UI) */}
         <div className="ui-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Layers size={16} color="#7c3aed" />
-                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Canonical Field Mapping</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Manual Database Field Mapping</span>
               </div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: showMapping ? '#7c3aed' : '#94a3b8' }}>
-                {showMapping ? `${mappings.length || 7} Mapped` : '0 Mapped'}
+              <span style={{
+                fontSize: '0.72rem', fontWeight: 700,
+                color: mappings.some(m => m.target_canonical_field && m.target_canonical_field !== 'ignore') ? '#059669' : '#d97706',
+                backgroundColor: mappings.some(m => m.target_canonical_field && m.target_canonical_field !== 'ignore') ? '#ecfdf5' : '#fffbeb',
+                padding: '2px 8px', borderRadius: '999px'
+              }}>
+                {mappings.filter(m => m.target_canonical_field && m.target_canonical_field !== 'ignore').length} of {mappings.length} Mapped
               </span>
             </div>
 
-            {showMapping ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '12px' }}>
+              Manually select which database column each header maps to using the select box. No automatic mapping is applied.
+            </div>
+
+            {mappingSaveMessage && (
+              <div style={{
+                marginBottom: '12px', padding: '8px 12px', borderRadius: '8px',
+                backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0',
+                color: '#065f46', fontSize: '0.74rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '6px'
+              }}>
+                <CheckCircle2 size={14} color="#10b981" />
+                <span>{mappingSaveMessage}</span>
+              </div>
+            )}
+
+            <div style={{ maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
                 <thead>
                   <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
-                    <th style={{ padding: '6px 0', fontWeight: 600 }}>Source Field</th>
-                    <th style={{ padding: '6px 0', fontWeight: 600 }}>→</th>
-                    <th style={{ padding: '6px 0', fontWeight: 600 }}>Canonical Field</th>
-                    <th style={{ padding: '6px 0', fontWeight: 600, textAlign: 'right' }}>Status</th>
+                    <th style={{ padding: '6px 4px', fontWeight: 600, width: '32%' }}>Source Header</th>
+                    <th style={{ padding: '6px 2px', fontWeight: 600, width: '5%', textAlign: 'center' }}>→</th>
+                    <th style={{ padding: '6px 4px', fontWeight: 600, width: '45%' }}>Target DB Field</th>
+                    <th style={{ padding: '6px 4px', fontWeight: 600, width: '18%', textAlign: 'right' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(mappings.length > 0 ? mappings : [
-                    { source_field: 'ItemCode', target_canonical_field: 'product_sku' },
-                    { source_field: 'ItemDescription', target_canonical_field: 'product_name' },
-                    { source_field: 'WarehouseCode', target_canonical_field: 'warehouse_code' },
-                    { source_field: 'QtyOnHand', target_canonical_field: 'current_stock' },
-                    { source_field: 'TxnDate', target_canonical_field: 'transaction_date' },
-                    { source_field: 'NetAmount', target_canonical_field: 'sales_amount' },
-                    { source_field: 'SupplierCode', target_canonical_field: 'supplier_code' }
-                  ]).map((m, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: '#0f172a' }}>{m.source_field}</td>
-                      <td style={{ padding: '8px 0', color: '#94a3b8' }}>→</td>
-                      <td style={{ padding: '8px 0', fontWeight: 600, color: '#2563eb' }}>{m.target_canonical_field}</td>
-                      <td style={{ padding: '8px 0', textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <CheckCircle2 size={12} color="#10b981" />
-                          <span>Mapped</span>
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {mappings.map((m, idx) => {
+                    const isMapped = m.target_canonical_field && m.target_canonical_field !== 'ignore';
+                    const isIgnored = m.target_canonical_field === 'ignore';
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <td style={{ padding: '6px 4px' }}>
+                          <input
+                            type="text"
+                            value={m.source_field}
+                            onChange={(e) => handleSourceFieldNameChange(idx, e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '5px 8px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: '#0f172a',
+                              backgroundColor: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px'
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 2px', textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>
+                          →
+                        </td>
+                        <td style={{ padding: '6px 4px' }}>
+                          <select
+                            value={m.target_canonical_field || ''}
+                            onChange={(e) => handleFieldMappingChange(idx, e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '5px 8px',
+                              fontSize: '0.74rem',
+                              fontWeight: isMapped ? 600 : 400,
+                              color: isMapped ? '#2563eb' : (isIgnored ? '#94a3b8' : '#64748b'),
+                              backgroundColor: isMapped ? '#eff6ff' : '#ffffff',
+                              border: isMapped ? '1px solid #93c5fd' : '1px solid #cbd5e1',
+                              borderRadius: '6px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="">-- Choose Database Column --</option>
+                            {CANONICAL_DB_GROUPS.map((grp) => (
+                              <optgroup key={grp.group} label={grp.group}>
+                                {grp.options.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: '6px 4px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            {isMapped ? (
+                              <span style={{ fontSize: '0.68rem', color: '#059669', backgroundColor: '#ecfdf5', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                ✓ Mapped
+                              </span>
+                            ) : isIgnored ? (
+                              <span style={{ fontSize: '0.68rem', color: '#64748b', backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                Ignored
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.68rem', color: '#d97706', backgroundColor: '#fffbeb', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                ⚠️ Select DB Field
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleRemoveHeader(idx)}
+                              title="Delete column"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px' }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            ) : (
-              <div style={{ padding: '28px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem' }}>
-                No canonical field mappings yet. Click Connect on a Data Source above to map fields.
-              </div>
-            )}
+            </div>
+
+            {/* Add Custom Header Input Row */}
+            <div style={{ display: 'flex', gap: '6px', marginTop: '12px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Add custom header (e.g. Barcode, Unit)"
+                value={newHeaderName}
+                onChange={(e) => setNewHeaderName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddHeader(); }}
+                style={{
+                  flex: 1,
+                  padding: '5px 8px',
+                  fontSize: '0.74rem',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1'
+                }}
+              />
+              <button
+                onClick={handleAddHeader}
+                className="btn-secondary"
+                style={{ padding: '5px 10px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Plus size={13} />
+                <span>Add Header</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Card Footer Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+            <button
+              onClick={handleResetMappings}
+              className="btn-secondary"
+              style={{ padding: '6px 12px', fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              <RotateCcw size={13} />
+              <span>Reset All</span>
+            </button>
+
+            <button
+              onClick={handleSaveManualMapping}
+              disabled={isSavingMapping}
+              className="btn-primary"
+              style={{
+                padding: '6px 16px',
+                fontSize: '0.76rem',
+                backgroundColor: '#2563eb',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Save size={13} />
+              <span>{isSavingMapping ? 'Saving...' : 'Save & Apply Mapping'}</span>
+            </button>
           </div>
         </div>
 
