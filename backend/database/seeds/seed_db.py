@@ -274,9 +274,13 @@ def seed_database(db: Session):
     # 7. Seed Real Inventory based on actual calculated demand
     print("Seeding real Inventory records...")
     inv_batch = []
-    for prod in product_objs:
+    for idx, prod in enumerate(product_objs):
         for wh in warehouse_objs:
-            stock_level = int(prod.reorder_point * random.uniform(1.2, 3.5))
+            # 20% of products seeded with low/critical stock to model realistic supply chain risks
+            if (idx % 5 == 0 and wh.id == wh_default.id) or random.random() < 0.15:
+                stock_level = max(1, int(prod.safety_stock_min * 0.4))
+            else:
+                stock_level = int(prod.reorder_point * random.uniform(1.2, 3.5))
             reserved = int(stock_level * 0.1)
             inv_batch.append({
                 "product_id": prod.id,

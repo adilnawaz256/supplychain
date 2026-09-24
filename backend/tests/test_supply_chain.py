@@ -6,9 +6,9 @@ import json
 from backend.app.core.database import Base
 from database.seeds.seed_db import seed_database
 from backend.app.models.models import Product, Warehouse, Inventory, SalesHistory
-from connectors.csv_connector import CSVIngestionConnector
-from connectors.mock_erp_connector import MockERPConnector
-from connectors.mock_wms_connector import MockWMSConnector
+from connectors.direct_db_connector import DirectDBConnector
+from connectors.sftp_connector import SFTPConnector
+from connectors.zoho_connector import ZohoConnector
 from ai.forecasting.engine import StatisticalForecastEngine
 from ai.inventory.optimization import InventoryOptimizer
 from ai.risk.engine import InventoryRiskEngine
@@ -37,49 +37,22 @@ def test_database_and_seeds(test_db):
     assert warehouse_count == 3
     assert inventory_count >= 50
 
-def test_csv_ingestion_connector(test_db):
-    csv_data = """sku,name,unit_cost,quantity,selling_price
-SKU-TEST-001,Test Pneumatic Cylinder,45.0,100,85.0
-SKU-TEST-002,Test Sensor Module,15.0,50,30.0"""
-    
-    connector = CSVIngestionConnector()
-    res = connector.ingest_csv_content(csv_data, test_db)
-    
-    assert res["status"] == "SUCCESS"
-    assert res["processed_count"] == 2
+def test_direct_db_connector():
+    connector = DirectDBConnector(host="localhost", database="postgres", username="postgres")
+    res = connector.test_connection()
+    assert "status" in res
 
-    # Verify product in DB
-    p = test_db.query(Product).filter(Product.sku == "SKU-TEST-001").first()
-    assert p is not None
-    assert p.unit_cost == 45.0
+def test_sftp_connector():
+    connector = SFTPConnector(host="sftp.example.com", username="testuser")
+    res = connector.test_connection()
+    assert "status" in res
 
-def test_mock_erp_connector(test_db):
-    erp_payload = {
-        "products": [
-            {"sku": "SKU-ERP-TEST", "name": "ERP Test Valve", "unit_cost": 75.0, "selling_price": 140.0}
-        ],
-        "suppliers": [
-            {"code": "SUP-ERP-TEST", "name": "ERP Vendor", "lead_time_days": 10}
-        ]
-    }
-    connector = MockERPConnector()
-    res = connector.sync_erp_data(erp_payload, test_db)
-    assert res["synced_products"] == 1
-    assert res["synced_suppliers"] == 1
-
-def test_mock_wms_connector(test_db):
-    wh = test_db.query(Warehouse).first()
-    prod = test_db.query(Product).first()
-    wms_payload = {
-        "warehouse_code": wh.code,
-        "inventory_levels": [
-            {"sku": prod.sku, "current_stock": 15, "allocated_stock": 2}
-        ]
-    }
-    connector = MockWMSConnector()
-    res = connector.sync_wms_inventory(wms_payload, test_db)
-    assert res["status"] == "SUCCESS"
-    assert res["items_updated"] == 1
+def test_zoho_connector():
+    connector = ZohoConnector(client_id="test_client_id", client_secret="test_secret", organization_id="12345")
+    auth_res = connector.authenticate()
+    assert auth_res["status"] == "SUCCESS"
+    modules = connector.discover_modules()
+    assert len(modules) >= 4
 
 def test_demand_forecasting_engine(test_db):
     product = test_db.query(Product).first()

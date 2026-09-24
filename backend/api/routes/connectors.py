@@ -1,13 +1,9 @@
-from fastapi import APIRouter, Depends, Body, File, UploadFile
+from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from backend.app.core.database import get_db
-from backend.app.schemas.schemas import IngestionLogResponse
 from backend.app.services.services import SupplyChainService
-from connectors.csv_connector import CSVIngestionConnector
-from connectors.mock_erp_connector import MockERPConnector
-from connectors.mock_wms_connector import MockWMSConnector
 
 router = APIRouter()
 
@@ -125,27 +121,3 @@ def save_manual_mapping(payload: Dict[str, Any] = Body(...), db: Session = Depen
 def check_validation(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     return service.validation_engine.evaluate_readiness()
-
-# --- Ingestion Endpoints ---
-@router.post("/api/ingest/csv", response_model=IngestionLogResponse, tags=["Connectors"])
-async def ingest_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    contents = await file.read()
-    csv_str = contents.decode("utf-8")
-    connector = CSVIngestionConnector()
-    res = connector.ingest_csv_content(csv_str, db)
-    return IngestionLogResponse(
-        status=res["status"],
-        processed_count=res["processed_count"],
-        errors=res["errors"],
-        timestamp=res["logs"][-1]["timestamp"] if res["logs"] else ""
-    )
-
-@router.post("/api/ingest/erp", tags=["Connectors"])
-def ingest_erp(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
-    connector = MockERPConnector()
-    return connector.sync_erp_data(payload, db)
-
-@router.post("/api/ingest/wms", tags=["Connectors"])
-def ingest_wms(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
-    connector = MockWMSConnector()
-    return connector.sync_wms_inventory(payload, db)
