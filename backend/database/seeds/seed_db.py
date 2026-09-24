@@ -13,6 +13,75 @@ from backend.app.models.models import (
     PurchaseOrderItem, Shipment, Role, WorkspaceMember, PermissionSetting, AuditLog
 )
 
+def generate_synthetic_transactions() -> pd.DataFrame:
+    """Generates synthetic DataFrame with 60 realistic retail products across 5 categories and 2,700+ transactions."""
+    random.seed(42)
+    categories = {
+        "Home Decor": [
+            "Regency Cakestand 3 Tier", "White Hanging Heart T-Light Holder", "Vintage Wall Clock",
+            "Wooden Picture Frame", "Ceramic Scented Candle Holder", "Antique Brass Desk Lamp",
+            "Decorative Wall Mirror", "Rustic Wood Welcome Sign", "Silver Plated Candle Stick",
+            "Glass Hurricane Lantern", "Embossed Metal Tray", "Moroccan Lantern Large"
+        ],
+        "Storage & Organization": [
+            "Jumbo Bag Red Retrospot", "Lunch Bag Black Skull", "Set of 3 Wooden Storage Boxes",
+            "Foldable Canvas Storage Bin", "Wire Basket with Fabric Liner", "Vintage Tin Storage Canister",
+            "Hanging Closet Organizer 6 Shelf", "Drawer Divider Organizers Set", "Woven Seagrass Storage Basket",
+            "Underbed Storage Box with Lid", "Plastic Craft Storage Case", "Desktop Document Organizer"
+        ],
+        "Gifts & Novelties": [
+            "Party Bunting Garland", "Vintage Birthday Greeting Cards", "Miniature Wooden Music Box",
+            "Enamel Lapel Pin Collection", "Glitter Party Confetti 100g", "Novelty Animal Keychains Set",
+            "Retro Photo Booth Props Pack", "Handmade Scented Soap Gift Set", "Ceramic Lucky Cat Figurine",
+            "Decorative Ribbon Spool Pack", "Holiday Party Balloons 50pk", "Wooden Puzzle Brainteaser"
+        ],
+        "Kitchen & Tableware": [
+            "Set of 3 Cake Tins Pantry Design", "Ceramic Coffee Mug Vintage Floral", "Stainless Steel Teaspoon Set of 6",
+            "Porcelain Dinner Plate 26cm", "Glass Water Carafe with Cork Lid", "Silicone Baking Moulds Set",
+            "Bamboo Salad Bowl Large", "Cast Iron Teapot 800ml", "Linen Kitchen Tea Towels 3pk",
+            "Stoneware Pasta Bowls Set of 4", "Wooden Salt and Pepper Grinder", "Enamel Measuring Cups Set"
+        ],
+        "General Merchandise": [
+            "Canvas Tote Bag Eco Friendly", "Compact Travel Umbrella Auto", "Microfiber Cleaning Cloths 5pk",
+            "Insulated Stainless Steel Bottle", "Cotton Apron with Front Pocket", "Thermal Travel Coffee Tumbler",
+            "Canvas Pencil Pouch Zippered", "A5 Hardcover Dot Grid Notebook", "Luggage Tag Leatherette Set",
+            "LED Keyring Mini Flashlight", "Pocket Folding Scissors", "Multi-Compartment Travel Wallet"
+        ]
+    }
+
+    rows = []
+    inv_num = 10001
+    base_date = datetime.now() - timedelta(days=90)
+    sku_id = 1000
+
+    for cat, prods in categories.items():
+        for name in prods:
+            sku_id += 1
+            sku = f"SKU-{sku_id}"
+            price = round(random.uniform(2.5, 45.0), 2)
+            cost = round(price * random.uniform(0.35, 0.60), 2)
+            lead_time = random.choice([7, 10, 14, 21])
+            for _ in range(random.randint(40, 50)):
+                dt = base_date + timedelta(days=random.randint(0, 89), hours=random.randint(8, 20), minutes=random.randint(0, 59))
+                qty = random.randint(1, 15)
+                cust_id = random.randint(12000, 12500)
+                rows.append({
+                    "Invoice": f"{inv_num}",
+                    "StockCode": sku,
+                    "Description": name,
+                    "Quantity": qty,
+                    "InvoiceDate": dt,
+                    "Price": price,
+                    "Cost": cost,
+                    "Customer ID": cust_id,
+                    "lead_time_days": lead_time
+                })
+                if random.random() < 0.2:
+                    inv_num += 1
+
+    return pd.DataFrame(rows)
+
+
 def seed_database(db: Session):
     print("Initializing Database Tables...")
     target_engine = db.bind if (db is not None and db.bind is not None) else engine
@@ -34,13 +103,15 @@ def seed_database(db: Session):
         Path(__file__).resolve().parent.parent.parent / "data" / "Data.xlsx",
         Path(__file__).resolve().parent.parent / "data" / "Data.xlsx"
     ]
-    data_path = next((p for p in candidates if p.exists()), candidates[2])
-    if not data_path.exists():
-        raise FileNotFoundError(f"Real dataset file not found at {data_path}")
-
-    print(f"Loading real transaction data from {data_path}...")
-    df_raw = pd.read_excel(data_path)
-    print(f"Loaded {len(df_raw)} raw transaction rows.")
+    data_path = next((p for p in candidates if p.exists()), None)
+    if data_path and data_path.exists():
+        print(f"Loading real transaction data from {data_path}...")
+        df_raw = pd.read_excel(data_path)
+        print(f"Loaded {len(df_raw)} raw transaction rows.")
+    else:
+        print("Data.xlsx not found. Generating synthetic realistic transaction dataset (60 products, 2,700+ transactions)...")
+        df_raw = generate_synthetic_transactions()
+        print(f"Generated {len(df_raw)} synthetic transaction rows.")
 
     # 1. Clean transactions
     df = df_raw.copy()
