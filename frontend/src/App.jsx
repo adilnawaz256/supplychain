@@ -89,7 +89,7 @@ export default function App() {
 
   const handleAuthSuccess = (authedUser) => {
     setUser(authedUser);
-    window.location.hash = '#overview';
+    window.location.hash = '#workspaces';
   };
 
   const getHeaderProps = () => {
@@ -182,7 +182,7 @@ export default function App() {
               role: 'Admin'
             }
           });
-          window.location.hash = '#overview';
+          window.location.hash = '#workspaces';
         }}
       />
     );

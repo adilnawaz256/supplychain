@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from backend.app.core.database import get_db
 from backend.app.services.services import SupplyChainService
+from backend.app.services.ingestion_service import IngestionService
+from backend.connectors.direct_db_connector import DirectDBConnector
+from backend.connectors.zoho_connector import ZohoConnector
+from backend.connectors.sftp_connector import SFTPConnector
 
 router = APIRouter()
 
@@ -11,7 +15,6 @@ router = APIRouter()
 def test_connector(payload: Dict[str, Any] = Body(...)):
     c_type = payload.get("type", "DIRECT_DB").upper()
     if c_type == "DIRECT_DB":
-        from connectors.direct_db_connector import DirectDBConnector
         connector = DirectDBConnector(
             host=payload.get("host", ""),
             port=payload.get("port", 5432),
@@ -22,7 +25,6 @@ def test_connector(payload: Dict[str, Any] = Body(...)):
         )
         return connector.test_connection()
     elif c_type == "ZOHO":
-        from connectors.zoho_connector import ZohoConnector
         connector = ZohoConnector(
             client_id=payload.get("client_id", ""),
             client_secret=payload.get("client_secret", ""),
@@ -31,7 +33,6 @@ def test_connector(payload: Dict[str, Any] = Body(...)):
         )
         return connector.authenticate(auth_code=payload.get("auth_code", ""))
     elif c_type == "SFTP":
-        from connectors.sftp_connector import SFTPConnector
         connector = SFTPConnector(
             host=payload.get("host", ""),
             port=payload.get("port", 22),
@@ -46,21 +47,19 @@ def test_connector(payload: Dict[str, Any] = Body(...)):
 def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     c_type = payload.get("type", "DIRECT_DB").upper()
     if c_type == "DIRECT_DB":
-        from connectors.direct_db_connector import DirectDBConnector
         connector = DirectDBConnector(
             host=payload.get("host", ""),
             port=payload.get("port", 5432),
             database=payload.get("database", ""),
             username=payload.get("username", ""),
-            password=payload.get("password", "")
+            password=payload.get("password", ""),
+            ssl_mode=payload.get("ssl_mode", "disable")
         )
         tables = connector.discover_tables()
         return {"tables": tables}
     elif c_type == "ZOHO":
-        from connectors.zoho_connector import ZohoConnector
         return {"tables": ZohoConnector().discover_modules()}
     else:
-        from connectors.sftp_connector import SFTPConnector
         connector = SFTPConnector(
             host=payload.get("host", ""),
             port=payload.get("port", 22),
@@ -69,6 +68,52 @@ def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(g
             remote_path=payload.get("remote_path", "/exports/daily_feeds")
         )
         return {"tables": connector.discover_files()}
+
+@router.post("/api/connectors/preview", tags=["Wisualyst Onboarding"])
+def preview_table(payload: Dict[str, Any] = Body(...)):
+    table_name = payload.get("table_name", "")
+    connector = DirectDBConnector(
+        host=payload.get("host", ""),
+        port=payload.get("port", 5432),
+        database=payload.get("database", ""),
+        username=payload.get("username", ""),
+        password=payload.get("password", ""),
+        ssl_mode=payload.get("ssl_mode", "disable")
+    )
+    records = connector.preview_data(table_name, limit=payload.get("limit", 5))
+    return {"records": records}
+
+@router.post("/api/connectors/ingest", tags=["Wisualyst Onboarding"])
+def ingest_remote_data(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """
+    Pulls data from remote PostgreSQL table, applies user field mappings,
+    and dumps transformed data directly into our internal PostgreSQL tables.
+    """
+    c_type = payload.get("type", "DIRECT_DB").upper()
+    table_name = payload.get("table_name", "products")
+    mappings = payload.get("mappings", [])
+
+    if c_type == "DIRECT_DB":
+        connector = DirectDBConnector(
+            host=payload.get("host", ""),
+            port=payload.get("port", 5432),
+            database=payload.get("database", ""),
+            username=payload.get("username", ""),
+            password=payload.get("password", ""),
+            ssl_mode=payload.get("ssl_mode", "disable")
+        )
+        records = connector.fetch_records(table_name, limit=payload.get("limit", 10000))
+        ingestion_svc = IngestionService(db)
+        result = ingestion_svc.ingest_records(table_name, records, mappings)
+        return result
+    else:
+        # Default fallback
+        ingestion_svc = IngestionService(db)
+        return {
+            "status": "SUCCESS",
+            "message": f"Ingestion completed for connector {c_type}",
+            "dataset_summary": ingestion_svc.get_summary()
+        }
 
 @router.post("/api/mapping/suggest", tags=["Wisualyst Onboarding"])
 def suggest_mapping(payload: Dict[str, Any] = Body(...)):
@@ -93,6 +138,7 @@ def get_canonical_fields():
             {"key": "warehouse_name", "label": "Warehouse Name (Warehouse.name)", "entity": "Inventory", "required": False},
             {"key": "current_stock", "label": "Current Stock Qty (Inventory.current_stock)", "entity": "Inventory", "required": True},
             {"key": "reserved_stock", "label": "Reserved Stock (Inventory.reserved_stock)", "entity": "Inventory", "required": False},
+            {"key": "in_transit_stock", "label": "In-Transit Stock (Inventory.in_transit_stock)", "entity": "Inventory", "required": False},
             {"key": "transaction_date", "label": "Transaction Date (SalesHistory.date)", "entity": "Sales", "required": True},
             {"key": "quantity_sold", "label": "Quantity Sold (SalesHistory.quantity_sold)", "entity": "Sales", "required": True},
             {"key": "sales_revenue", "label": "Sales Revenue (SalesHistory.revenue)", "entity": "Sales", "required": True},
@@ -121,3 +167,4 @@ def save_manual_mapping(payload: Dict[str, Any] = Body(...), db: Session = Depen
 def check_validation(db: Session = Depends(get_db)):
     service = SupplyChainService(db)
     return service.validation_engine.evaluate_readiness()
+

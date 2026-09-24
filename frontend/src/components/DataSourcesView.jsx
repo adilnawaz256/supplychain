@@ -34,9 +34,81 @@ import {
 import { API_BASE_URL } from '../config/api';
 import { CANONICAL_DB_GROUPS } from '../config/canonicalFields';
 
+const CANONICAL_AUTO_MAP = {
+  sku: 'product_sku',
+  itemcode: 'product_sku',
+  item_code: 'product_sku',
+  product_id: 'product_sku',
+  part_number: 'product_sku',
+  barcode: 'product_sku',
+  name: 'product_name',
+  itemdescription: 'product_name',
+  item_name: 'product_name',
+  product_name: 'product_name',
+  title: 'product_name',
+  unit_cost: 'unit_cost',
+  cost: 'unit_cost',
+  unitcost: 'unit_cost',
+  cost_price: 'unit_cost',
+  selling_price: 'selling_price',
+  price: 'selling_price',
+  sellingprice: 'selling_price',
+  unit_price: 'selling_price',
+  rate: 'selling_price',
+  lead_time_days: 'lead_time_days',
+  lead_time: 'lead_time_days',
+  leadtime: 'lead_time_days',
+  safety_stock_min: 'safety_stock_min',
+  safety_stock: 'safety_stock_min',
+  reorder_point: 'reorder_point',
+  reorder_pt: 'reorder_point',
+  category_name: 'category_name',
+  category: 'category_name',
+  category_id: 'category_name',
+  warehouse_code: 'warehouse_code',
+  warehousecode: 'warehouse_code',
+  wh_code: 'warehouse_code',
+  warehouse_name: 'warehouse_name',
+  current_stock: 'current_stock',
+  stock: 'current_stock',
+  qtyonhand: 'current_stock',
+  qty_on_hand: 'current_stock',
+  reserved_stock: 'reserved_stock',
+  in_transit_stock: 'in_transit_stock',
+  transaction_date: 'transaction_date',
+  date: 'transaction_date',
+  txndate: 'transaction_date',
+  quantity_sold: 'quantity_sold',
+  qty_sold: 'quantity_sold',
+  sales_revenue: 'sales_revenue',
+  revenue: 'sales_revenue',
+  netamount: 'sales_revenue',
+  supplier_code: 'supplier_code',
+  suppliercode: 'supplier_code',
+  supplier_name: 'supplier_name',
+  customer_code: 'customer_code',
+  customer_name: 'customer_name',
+  order_number: 'order_number',
+  shelf_space_sqm: 'shelf_space_sqm'
+};
+
+function suggestTargetField(columnName) {
+  if (!columnName) return '';
+  const clean = columnName.toLowerCase().replace(/[\s_-]/g, '');
+  for (const [key, target] of Object.entries(CANONICAL_AUTO_MAP)) {
+    if (clean === key.replace(/[\s_-]/g, '')) {
+      return target;
+    }
+  }
+  return '';
+}
+
 export default function DataSourcesView({ onNavigate }) {
   const [validation, setValidation] = useState(null);
   const [tables, setTables] = useState([]);
+  const [selectedTable, setSelectedTable] = useState('products');
+  const [isDumpingData, setIsDumpingData] = useState(false);
+  const [dumpSuccessMessage, setDumpSuccessMessage] = useState(null);
   const [mappings, setMappings] = useState(() => {
     try {
       const saved = localStorage.getItem('wisualyst_manual_field_mappings');
@@ -65,6 +137,7 @@ export default function DataSourcesView({ onNavigate }) {
   const [newHeaderName, setNewHeaderName] = useState('');
   const [mappingSaveMessage, setMappingSaveMessage] = useState(null);
   const [isSavingMapping, setIsSavingMapping] = useState(false);
+
 
   const handleFieldMappingChange = (index, targetField) => {
     setMappings(prev => {
@@ -216,7 +289,14 @@ export default function DataSourcesView({ onNavigate }) {
         fetch(`${API_BASE_URL}/api/connectors/discover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'DIRECT_DB' })
+          body: JSON.stringify({
+            type: 'DIRECT_DB',
+            host: pgForm.host,
+            port: pgForm.port,
+            database: pgForm.database,
+            username: pgForm.username,
+            password: pgForm.password
+          })
         })
       ]);
 
@@ -231,7 +311,6 @@ export default function DataSourcesView({ onNavigate }) {
             setConnectedSources({ pg: true, zoho: false, sftp: false });
           }
         } else {
-          // If backend already has data (e.g. initial launch), auto-mark PostgreSQL connected
           const hasDbData = valData.dataset_summary?.products_mapped > 0 || valData.overall_readiness_pct > 0;
           const initialConn = { pg: hasDbData, zoho: false, sftp: false };
           setConnectedSources(initialConn);
@@ -239,28 +318,37 @@ export default function DataSourcesView({ onNavigate }) {
         }
       }
 
-      // Preserve manual mappings: check localStorage, otherwise keep unmapped headers (no automatic mapping)
+      if (discRes.ok) {
+        const discData = await discRes.json();
+        if (discData.tables && discData.tables.length > 0) {
+          const formattedTables = discData.tables.map(t => ({
+            name: t.table_name || t.name,
+            table_name: t.table_name || t.name,
+            source: 'PostgreSQL Database',
+            records: t.record_count ? `${t.record_count.toLocaleString()} rows` : (t.columns ? `${t.columns.length} columns` : '0 rows'),
+            record_count: t.record_count || 0,
+            columns: t.columns || []
+          }));
+          setTables(formattedTables);
+
+          // If no manual mappings exist or if user hasn't mapped yet, auto-populate from first table
+          const savedManual = localStorage.getItem('wisualyst_manual_field_mappings');
+          if (!savedManual && formattedTables[0]?.columns?.length > 0) {
+            setSelectedTable(formattedTables[0].name);
+            const initialMap = formattedTables[0].columns.map(c => ({
+              source_field: c,
+              target_canonical_field: suggestTargetField(c)
+            }));
+            setMappings(initialMap);
+          }
+        }
+      }
+
       const savedManual = localStorage.getItem('wisualyst_manual_field_mappings');
       if (savedManual) {
         try {
           setMappings(JSON.parse(savedManual));
         } catch (e) {}
-      } else {
-        const defaultHeaders = ['ItemCode', 'ItemDescription', 'WarehouseCode', 'QtyOnHand', 'TxnDate', 'NetAmount', 'SupplierCode'];
-        setMappings(defaultHeaders.map(h => ({ source_field: h, target_canonical_field: '' })));
-      }
-
-      if (discRes.ok) {
-        const discData = await discRes.json();
-        if (discData.tables && discData.tables.length > 0) {
-          setTables(discData.tables.map(t => ({
-            name: t.table_name || t.name,
-            source: 'PostgreSQL / ERP',
-            records: t.row_count ? t.row_count.toLocaleString() : (t.columns ? `${t.columns.length} columns` : '0')
-          })));
-        } else {
-          setTables([]);
-        }
       }
     } catch (err) {
       console.error('Error loading data sources information:', err);
@@ -270,6 +358,23 @@ export default function DataSourcesView({ onNavigate }) {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleTableSelect = (tableName) => {
+    setSelectedTable(tableName);
+    const found = tables.find(t => (t.name === tableName || t.table_name === tableName));
+    if (found && found.columns && found.columns.length > 0) {
+      const newMappings = found.columns.map(col => ({
+        source_field: col,
+        target_canonical_field: suggestTargetField(col)
+      }));
+      setMappings(newMappings);
+      try {
+        localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(newMappings));
+      } catch (e) {}
+      setMappingSaveMessage(`Loaded ${found.columns.length} columns from table '${tableName}' ready for mapping.`);
+      setTimeout(() => setMappingSaveMessage(null), 3500);
+    }
+  };
 
   const handleTest = async (sourceType) => {
     setTestingConnection(sourceType);
@@ -299,66 +404,118 @@ export default function DataSourcesView({ onNavigate }) {
     }
   };
 
-  const [stepAnimationStage, setStepAnimationStage] = useState(0); // 0: Idle, 1: Connecting, 2: Discovering, 3: Mapping, 4: Validating, 5: Complete
-
-  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  const [stepAnimationStage, setStepAnimationStage] = useState(0);
 
   const handleConnectAndIngest = async (sourceKey) => {
-    setActiveModal(null);
     setIsProcessing(true);
-    
-    // Step 1: Connecting Data Source
-    setStepAnimationStage(1);
-    changePipelineStep(1);
-    await delay(750);
-
-    // Step 2: Discover Schema
-    setStepAnimationStage(2);
-    changePipelineStep(2);
-    await delay(850);
-
-    // Step 3: Canonical Mapping
-    setStepAnimationStage(3);
-    changePipelineStep(3);
-    await delay(850);
-
-    // Step 4: Data Readiness
-    setStepAnimationStage(4);
-    changePipelineStep(4);
-    await delay(750);
-
-    // Step 5: Data Ingestion Complete
-    setStepAnimationStage(5);
-    changePipelineStep(5);
-
-    setConnectedSources(prev => {
-      const nextState = { ...prev, [sourceKey]: true };
-      localStorage.setItem('wisualyst_connected_sources', JSON.stringify(nextState));
-      return nextState;
-    });
-
-    const payload = sourceKey === 'pg'
-      ? {
+    try {
+      if (sourceKey === 'pg') {
+        const payload = {
           type: 'DIRECT_DB',
           host: pgForm.host,
           port: pgForm.port,
           database: pgForm.database,
           username: pgForm.username,
           password: pgForm.password
-        }
-      : { type: sourceKey.toUpperCase() };
+        };
 
-    try {
-      await fetch(`${API_BASE_URL}/api/database/seed`, { method: 'POST' });
-      await loadData();
+        const res = await fetch(`${API_BASE_URL}/api/connectors/discover`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        const discovered = data.tables || [];
+
+        if (discovered.length > 0) {
+          const formatted = discovered.map(t => ({
+            name: t.table_name || t.name,
+            table_name: t.table_name || t.name,
+            source: 'PostgreSQL Database',
+            records: t.record_count ? `${t.record_count.toLocaleString()} rows` : `${t.columns?.length || 0} cols`,
+            record_count: t.record_count || 0,
+            columns: t.columns || []
+          }));
+          setTables(formatted);
+
+          const firstT = formatted[0];
+          setSelectedTable(firstT.name);
+
+          if (firstT.columns && firstT.columns.length > 0) {
+            const initialMap = firstT.columns.map(c => ({
+              source_field: c,
+              target_canonical_field: suggestTargetField(c)
+            }));
+            setMappings(initialMap);
+            localStorage.setItem('wisualyst_manual_field_mappings', JSON.stringify(initialMap));
+          }
+
+          setDumpSuccessMessage(`✓ Connected to PostgreSQL! Discovered ${discovered.length} tables. Choose table & columns below, then submit to dump data.`);
+          setTimeout(() => setDumpSuccessMessage(null), 8000);
+        }
+
+        setConnectedSources(prev => {
+          const nextState = { ...prev, pg: true };
+          localStorage.setItem('wisualyst_connected_sources', JSON.stringify(nextState));
+          return nextState;
+        });
+
+        setActiveModal(null);
+        changePipelineStep(3); // Jump to Step 3 Canonical Mapping
+      } else {
+        setActiveModal(null);
+        changePipelineStep(3);
+      }
     } catch (err) {
-      console.error('Connection sync note:', err);
+      console.error('Connection error:', err);
     } finally {
       setIsProcessing(false);
-      await delay(1000);
-      setStepAnimationStage(0);
     }
   };
+
+  const handleSubmitDumpToPostgres = async () => {
+    setIsDumpingData(true);
+    setDumpSuccessMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/connectors/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'DIRECT_DB',
+          host: pgForm.host,
+          port: pgForm.port,
+          database: pgForm.database,
+          username: pgForm.username,
+          password: pgForm.password,
+          table_name: selectedTable,
+          mappings: mappings
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'SUCCESS') {
+        setDumpSuccessMessage(
+          `🎉 Successfully dumped ${data.rows_processed} records from '${selectedTable}' into internal PostgreSQL database!`
+        );
+        if (data.dataset_summary) {
+          setValidation(prev => ({
+            ...prev,
+            dataset_summary: data.dataset_summary,
+            overall_readiness_pct: 100
+          }));
+        }
+        changePipelineStep(5);
+        setStepAnimationStage(5);
+      } else {
+        setDumpSuccessMessage(`⚠️ Ingestion note: ${data.message || 'Error occurred while dumping'}`);
+      }
+    } catch (err) {
+      console.error('Dump error:', err);
+      setDumpSuccessMessage('⚠️ Error dumping data to database. Please check connection credentials.');
+    } finally {
+      setIsDumpingData(false);
+    }
+  };
+
 
   const handleDisconnect = async (sourceKey) => {
     setConnectedSources(prev => {
@@ -688,6 +845,36 @@ export default function DataSourcesView({ onNavigate }) {
         </div>
       </div>
 
+      {/* Success Notification Alert for PostgreSQL Data Dump */}
+      {dumpSuccessMessage && (
+        <div style={{
+          padding: '14px 20px',
+          borderRadius: '12px',
+          backgroundColor: '#ecfdf5',
+          border: '1px solid #6ee7b7',
+          color: '#065f46',
+          fontSize: '0.86rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 14px rgba(16, 185, 129, 0.15)',
+          animation: 'fadeIn 0.3s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CheckCircle2 size={20} color="#10b981" />
+            <span>{dumpSuccessMessage}</span>
+          </div>
+          <button
+            onClick={() => onNavigate('overview')}
+            className="btn-primary"
+            style={{ padding: '6px 14px', fontSize: '0.78rem', backgroundColor: '#059669' }}
+          >
+            <span>View in Control Tower →</span>
+          </button>
+        </div>
+      )}
+
       {/* ROW 2: 3-Column Grid Matching Screenshot */}
       <div style={{
         display: 'grid',
@@ -714,6 +901,7 @@ export default function DataSourcesView({ onNavigate }) {
                     <th style={{ padding: '6px 0', fontWeight: 600 }}>Table Name</th>
                     <th style={{ padding: '6px 0', fontWeight: 600 }}>Source</th>
                     <th style={{ padding: '6px 0', fontWeight: 600, textAlign: 'right' }}>Records</th>
+                    <th style={{ padding: '6px 0', fontWeight: 600, textAlign: 'right' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -722,6 +910,23 @@ export default function DataSourcesView({ onNavigate }) {
                       <td style={{ padding: '8px 0', fontWeight: 600, color: '#0f172a' }}>{t.name}</td>
                       <td style={{ padding: '8px 0', color: '#64748b' }}>{t.source}</td>
                       <td style={{ padding: '8px 0', color: '#334155', fontWeight: 600, textAlign: 'right' }}>{t.records}</td>
+                      <td style={{ padding: '8px 0', textAlign: 'right' }}>
+                        <button
+                          onClick={() => { handleTableSelect(t.name); changePipelineStep(3); }}
+                          style={{
+                            padding: '3px 8px',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                            borderRadius: '4px',
+                            border: '1px solid #bfdbfe',
+                            backgroundColor: selectedTable === t.name ? '#2563eb' : '#eff6ff',
+                            color: selectedTable === t.name ? '#ffffff' : '#2563eb',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {selectedTable === t.name ? 'Active' : 'Map →'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -740,7 +945,7 @@ export default function DataSourcesView({ onNavigate }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Layers size={16} color="#7c3aed" />
-                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Manual Database Field Mapping</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Field Mapping & Data Ingestion</span>
               </div>
               <span style={{
                 fontSize: '0.72rem', fontWeight: 700,
@@ -752,9 +957,48 @@ export default function DataSourcesView({ onNavigate }) {
               </span>
             </div>
 
-            <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '12px' }}>
-              Manually select which database column each header maps to using the select box. No automatic mapping is applied.
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '10px' }}>
+              Choose a table and map remote columns to system database fields before submitting to PostgreSQL.
             </div>
+
+            {/* Table Selector Dropdown */}
+            {tables.length > 0 && (
+              <div style={{
+                marginBottom: '12px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1e40af' }}>
+                  Remote Table:
+                </span>
+                <select
+                  value={selectedTable}
+                  onChange={(e) => handleTableSelect(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '4px 8px',
+                    fontSize: '0.74rem',
+                    borderRadius: '6px',
+                    border: '1px solid #93c5fd',
+                    backgroundColor: '#ffffff',
+                    fontWeight: 600,
+                    color: '#0f172a'
+                  }}
+                >
+                  {tables.map((t, i) => (
+                    <option key={i} value={t.name || t.table_name}>
+                      {t.name || t.table_name} ({t.records || `${t.record_count} rows`})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {mappingSaveMessage && (
               <div style={{
@@ -844,7 +1088,7 @@ export default function DataSourcesView({ onNavigate }) {
                               </span>
                             ) : (
                               <span style={{ fontSize: '0.68rem', color: '#d97706', backgroundColor: '#fffbeb', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                                ⚠️ Select DB Field
+                                ⚠️ Select Field
                               </span>
                             )}
                             <button
@@ -891,34 +1135,49 @@ export default function DataSourcesView({ onNavigate }) {
           </div>
 
           {/* Card Footer Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-            <button
-              onClick={handleResetMappings}
-              className="btn-secondary"
-              style={{ padding: '6px 12px', fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}
-            >
-              <RotateCcw size={13} />
-              <span>Reset All</span>
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #f1f5f9', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                onClick={handleResetMappings}
+                className="btn-secondary"
+                style={{ padding: '6px 10px', fontSize: '0.74rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <RotateCcw size={13} />
+                <span>Reset</span>
+              </button>
+
+              <button
+                onClick={handleSaveManualMapping}
+                disabled={isSavingMapping}
+                className="btn-secondary"
+                style={{ padding: '6px 12px', fontSize: '0.74rem', color: '#2563eb', borderColor: '#bfdbfe' }}
+              >
+                <Save size={13} />
+                <span>{isSavingMapping ? 'Saving...' : 'Save Mapping'}</span>
+              </button>
+            </div>
 
             <button
-              onClick={handleSaveManualMapping}
-              disabled={isSavingMapping}
+              onClick={handleSubmitDumpToPostgres}
+              disabled={isDumpingData}
               className="btn-primary"
               style={{
-                padding: '6px 16px',
-                fontSize: '0.76rem',
-                backgroundColor: '#2563eb',
+                padding: '8px 16px',
+                fontSize: '0.78rem',
+                backgroundColor: '#10b981',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '6px',
+                fontWeight: 700
               }}
             >
-              <Save size={13} />
-              <span>{isSavingMapping ? 'Saving...' : 'Save & Apply Mapping'}</span>
+              <Database size={14} />
+              <span>{isDumpingData ? 'Dumping Data...' : 'Submit & Dump Data into PostgreSQL'}</span>
             </button>
           </div>
         </div>
+
 
         {/* Card 3: Data Quality & Readiness */}
         <div className="ui-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -1238,6 +1497,17 @@ export default function DataSourcesView({ onNavigate }) {
                   <input type="password" placeholder="Enter DB password" value={pgForm.password} onChange={(e) => setPgForm({ ...pgForm, password: e.target.value })} className="ui-input" />
                 </div>
               </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPgForm({ host: '', port: '5432', database: 'postgres', username: '', password: '', ssl: true })}
+                  className="btn-secondary"
+                  style={{ padding: '4px 10px', fontSize: '0.72rem', color: '#2563eb', borderColor: '#bfdbfe' }}
+                >
+                  ⚡ Use Default / Internal Database
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '24px' }}>
@@ -1257,7 +1527,7 @@ export default function DataSourcesView({ onNavigate }) {
                   className="btn-primary"
                   style={{ padding: '8px 18px', fontSize: '0.82rem' }}
                 >
-                  {isProcessing ? 'Connecting & Syncing...' : 'Connect & Discover Schema'}
+                  {isProcessing ? 'Connecting & Discovering...' : 'Connect & Discover Schema'}
                 </button>
               </div>
             </div>
