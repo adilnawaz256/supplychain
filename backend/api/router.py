@@ -13,10 +13,12 @@ from backend.api.routes.workspaces import router as workspaces_router
 from backend.api.routes.integrations import router as integrations_router
 from backend.api.routes.access_control import router as access_control_router
 from backend.api.routes.admin import router as admin_router
+from backend.api.routes.auth import router as auth_router
 
 router = APIRouter()
 
 # Include all modular REST API routers
+router.include_router(auth_router)
 router.include_router(ml_router)
 router.include_router(catalog_router)
 router.include_router(control_tower_router)
