@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
+# Create module symlink so 'backend.app...' imports work seamlessly
+RUN ln -s /app /app/backend
+
 EXPOSE 8000
 
 ENV PYTHONPATH=/app
