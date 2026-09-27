@@ -12,15 +12,23 @@ if db_url.startswith("sqlite"):
     engine = create_engine(db_url, connect_args=connect_args, echo=False)
 else:
     sync_url = db_url.replace("+asyncpg", "") if "+asyncpg" in db_url else db_url
-    engine = create_engine(
-        sync_url,
-        echo=False,
-        pool_pre_ping=True,
-        pool_size=15,
-        max_overflow=25,
-        pool_recycle=300,
-        pool_timeout=30
-    )
+    if "supabase" in sync_url.lower() or "pooler" in sync_url.lower():
+        engine = create_engine(
+            sync_url,
+            echo=False,
+            poolclass=NullPool,
+            pool_pre_ping=True
+        )
+    else:
+        engine = create_engine(
+            sync_url,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=5,
+            pool_recycle=300,
+            pool_timeout=10
+        )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
