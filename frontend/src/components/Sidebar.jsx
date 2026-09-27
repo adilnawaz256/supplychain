@@ -24,8 +24,7 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
 
   const navItems = [
     { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'workspaces', label: 'Workspaces', icon: LayoutGrid },
-    { id: 'datasources', label: 'Data Sources', icon: Database },
+    { id: 'datasources', label: 'Workspace & Data Sources', icon: Database },
     { id: 'intelligence', label: 'Intelligence Engines', icon: Cpu },
     { id: 'recommendations', label: 'Recommendations', icon: FileText },
     { id: 'alerts', label: 'Alerts', icon: Bell },
