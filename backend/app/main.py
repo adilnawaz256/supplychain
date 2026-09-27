@@ -14,7 +14,7 @@ from backend.app.core.config import settings
 from backend.app.core.database import Base, engine, SessionLocal
 from backend.app.api.router import router
 import backend.app.models.models
-from backend.app.models.models import Product
+from backend.app.models.models import User
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -40,8 +40,8 @@ def startup_event():
         Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         try:
-            prod_count = db.query(Product).count()
-            print(f"Database initialized. Contains {prod_count} products.")
+            user_count = db.query(User).count()
+            print(f"Database initialized. Contains {user_count} registered users.")
         finally:
             db.close()
     except Exception as e:
