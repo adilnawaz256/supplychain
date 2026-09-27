@@ -21,8 +21,15 @@ import {
 import { getSessionUser, signOutUser } from './config/supabase';
 
 export default function App() {
-  // Session / User state - defaults to null until authenticated or session restored
-  const [user, setUser] = useState(null);
+  // Session / User state - initializes synchronously from localStorage cache to prevent login screen flash on refresh
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('auth_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [authChecked, setAuthChecked] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     const hash = window.location.hash.replace('#', '').toLowerCase();
@@ -46,17 +53,13 @@ export default function App() {
       const hash = window.location.hash.replace('#', '').toLowerCase();
       if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'mcp', 'access-control'].includes(hash)) {
         setActiveTab(hash);
-      } else if (hash === 'login' || hash === 'signin' || hash === 'signup' || hash === 'register') {
-        if (!user) {
-          // Stay in auth view with corresponding mode
-        }
       }
     };
 
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [user]);
+  }, []);
 
   const changeTab = (tab) => {
     setActiveTab(tab);
@@ -71,6 +74,8 @@ export default function App() {
         const sessUser = await getSessionUser();
         if (sessUser) {
           setUser(sessUser);
+        } else {
+          setUser(null);
         }
       } catch (err) {
         console.error('Session check note:', err);
@@ -88,8 +93,11 @@ export default function App() {
   };
 
   const handleAuthSuccess = (authedUser) => {
+    try {
+      localStorage.setItem('auth_user', JSON.stringify(authedUser));
+    } catch (e) {}
     setUser(authedUser);
-    window.location.hash = '#workspaces';
+    window.location.hash = '#overview';
   };
 
   const getHeaderProps = () => {
@@ -159,7 +167,37 @@ export default function App() {
     }
   };
 
-  // If user is not authenticated, redirect root access to #login and show Login screen!
+  // 1. While auth status is being verified on startup and we don't have a cached user yet, render a smooth loading spinner
+  if (!authChecked && !user) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f8fafc',
+        fontFamily: 'Inter, system-ui, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '3px solid #cbd5e1',
+            borderTopColor: '#2563eb',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 16px auto'
+          }} />
+          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#475569' }}>
+            Loading Wisualyst Workspace...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Only show AuthView when user is explicitly NOT authenticated
   if (!user) {
     const currentHash = window.location.hash.replace('#', '').toLowerCase();
     const mode = (currentHash === 'signup' || currentHash === 'register') ? 'signup' : 'login';
@@ -173,7 +211,7 @@ export default function App() {
         initialMode={mode}
         onAuthSuccess={handleAuthSuccess}
         onBypassDemo={() => {
-          setUser({
+          const demoUser = {
             id: 'demo-user',
             email: 'avery.johnson@gscc.com',
             user_metadata: {
@@ -181,8 +219,12 @@ export default function App() {
               company_name: 'Global Supply Chain Co.',
               role: 'Admin'
             }
-          });
-          window.location.hash = '#workspaces';
+          };
+          try {
+            localStorage.setItem('auth_user', JSON.stringify(demoUser));
+          } catch (e) {}
+          setUser(demoUser);
+          window.location.hash = '#overview';
         }}
       />
     );
