@@ -125,6 +125,7 @@ export default function DataSourcesView({ onNavigate }) {
   const [connectErrorMsg, setConnectErrorMsg] = useState(null);
 
   // --- Step 3: Discovered Schema & Column Mapping ---
+  const [selectedExternalTable, setSelectedExternalTable] = useState('');
   const [targetTable, setTargetTable] = useState('products');
   const [discoveredTables, setDiscoveredTables] = useState(() => {
     try {
@@ -150,18 +151,26 @@ export default function DataSourcesView({ onNavigate }) {
   const [isDumping, setIsDumping] = useState(false);
   const [dumpResult, setDumpResult] = useState(null);
 
+  // Initialize default selected external table if discovered
+  useEffect(() => {
+    if (!selectedExternalTable && discoveredTables.length > 0) {
+      setSelectedExternalTable(discoveredTables[0].table_name);
+    }
+  }, [discoveredTables, selectedExternalTable]);
+
   // Dynamic Column Prepopulation on Table Switch or Discovery
   useEffect(() => {
-    const matchingTableObj = discoveredTables.find(t => 
-      t.table_name && (
-        t.table_name.toLowerCase().includes(targetTable.toLowerCase()) || 
-        targetTable.toLowerCase().includes(t.table_name.toLowerCase())
-      )
-    );
+    let cols = [];
+    if (selectedExternalTable) {
+      const matchingTableObj = discoveredTables.find(t => t.table_name === selectedExternalTable);
+      if (matchingTableObj && matchingTableObj.columns && matchingTableObj.columns.length > 0) {
+        cols = matchingTableObj.columns;
+      }
+    }
 
-    const cols = (matchingTableObj && matchingTableObj.columns && matchingTableObj.columns.length > 0)
-      ? matchingTableObj.columns
-      : (DEFAULT_EXT_COLUMNS[targetTable] || DEFAULT_EXT_COLUMNS.products);
+    if (!cols || cols.length === 0) {
+      cols = DEFAULT_EXT_COLUMNS[targetTable] || DEFAULT_EXT_COLUMNS.products;
+    }
 
     setExternalColumns(cols);
 
@@ -170,7 +179,7 @@ export default function DataSourcesView({ onNavigate }) {
       initialMap[col] = autoMapColumn(col, targetTable);
     });
     setFieldMappings(initialMap);
-  }, [targetTable, discoveredTables]);
+  }, [selectedExternalTable, targetTable, discoveredTables]);
 
   // Handle Database Connection & Table/Column Discovery
   const handleConnectDatabase = async (e) => {
@@ -190,10 +199,11 @@ export default function DataSourcesView({ onNavigate }) {
       });
 
       const data = await res.json();
-      if (res.ok && data.tables) {
+      if (res.ok && data.tables && data.tables.length > 0) {
         setIsConnected(true);
         setDiscoveredTables(data.tables);
-        setConnectSuccessMsg(`Connected & Synced! Discovered ${data.tables.length} tables in source database.`);
+        setSelectedExternalTable(data.tables[0].table_name);
+        setConnectSuccessMsg(`Connected & Synced! Discovered ${data.tables.length} tables in external PostgreSQL database.`);
         try {
           localStorage.setItem('wisualyst_db_connected', 'true');
           localStorage.setItem('wisualyst_connected_db_config', JSON.stringify(dbForm));
@@ -457,34 +467,95 @@ export default function DataSourcesView({ onNavigate }) {
             </span>
           </div>
 
-          {/* Select Target Table */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>Target Supabase DB Table:</span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {['products', 'orders', 'inventory', 'shipments', 'customers'].map((tbl) => (
+          {/* 1. Select External Source PostgreSQL Table */}
+          <div style={{ marginBottom: '20px', background: '#f8fafc', padding: '16px 20px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Database size={16} color="#2563eb" /> 1. Select External PostgreSQL Source Table:
+              </span>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                {discoveredTables.length} Tables Discovered in Connected DB
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {(discoveredTables.length > 0 ? discoveredTables : [
+                { table_name: 'ext_products', record_count: 150, columns: DEFAULT_EXT_COLUMNS.products },
+                { table_name: 'ext_orders', record_count: 420, columns: DEFAULT_EXT_COLUMNS.orders },
+                { table_name: 'ext_inventory', record_count: 310, columns: DEFAULT_EXT_COLUMNS.inventory },
+                { table_name: 'ext_shipments', record_count: 85, columns: DEFAULT_EXT_COLUMNS.shipments },
+                { table_name: 'ext_customers', record_count: 230, columns: DEFAULT_EXT_COLUMNS.customers }
+              ]).map((t) => {
+                const isSelected = (selectedExternalTable === t.table_name) || (!selectedExternalTable && t.table_name === 'ext_products');
+                return (
+                  <button
+                    key={t.table_name}
+                    onClick={() => {
+                      setSelectedExternalTable(t.table_name);
+                      // Auto suggest target Supabase table based on name
+                      const lower = t.table_name.toLowerCase();
+                      if (lower.includes('order') || lower.includes('sale')) setTargetTable('orders');
+                      else if (lower.includes('stock') || lower.includes('inventory') || lower.includes('warehouse')) setTargetTable('inventory');
+                      else if (lower.includes('ship') || lower.includes('carrier') || lower.includes('logistics')) setTargetTable('shipments');
+                      else if (lower.includes('cust') || lower.includes('client') || lower.includes('user')) setTargetTable('customers');
+                      else setTargetTable('products');
+                    }}
+                    style={{
+                      padding: '8px 14px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
+                      backgroundColor: isSelected ? '#1e40af' : '#ffffff',
+                      color: isSelected ? '#ffffff' : '#334155',
+                      border: isSelected ? '1.5px solid #1e40af' : '1px solid #cbd5e1',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    <Table size={14} />
+                    <span>{t.table_name}</span>
+                    <span style={{ fontSize: '0.72rem', opacity: 0.85, background: isSelected ? 'rgba(255,255,255,0.2)' : '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+                      {t.record_count ?? 0} rows
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Select Target Supabase DB Canonical Table */}
+          <div style={{ marginBottom: '24px', background: '#eff6ff', padding: '16px 20px', borderRadius: '14px', border: '1px solid #bfdbfe' }}>
+            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e3a8a', display: 'block', marginBottom: '10px' }}>
+              2. Select Target Supabase DB Table:
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {[
+                { id: 'products', label: 'products (Product Catalog & SKUs)' },
+                { id: 'orders', label: 'orders (Sales Orders & POs)' },
+                { id: 'inventory', label: 'inventory (Stock Levels & Warehouses)' },
+                { id: 'shipments', label: 'shipments (Logistics & Deliveries)' },
+                { id: 'customers', label: 'customers (Client Directory)' }
+              ].map((tbl) => (
                 <button
-                  key={tbl}
-                  onClick={() => setTargetTable(tbl)}
+                  key={tbl.id}
+                  onClick={() => setTargetTable(tbl.id)}
                   style={{
                     padding: '8px 16px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700,
-                    backgroundColor: targetTable === tbl ? '#2563eb' : '#ffffff',
-                    color: targetTable === tbl ? '#ffffff' : '#475569',
-                    border: '1px solid #cbd5e1', cursor: 'pointer'
+                    backgroundColor: targetTable === tbl.id ? '#2563eb' : '#ffffff',
+                    color: targetTable === tbl.id ? '#ffffff' : '#1e3a8a',
+                    border: targetTable === tbl.id ? '1.5px solid #2563eb' : '1px solid #93c5fd',
+                    cursor: 'pointer'
                   }}
                 >
-                  {tbl.toUpperCase()}
+                  {tbl.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Mapping Table */}
+          {/* 3. Column Mapping Table */}
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '28px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: '#f1f5f9', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.5px', color: '#475569' }}>
-                  <th style={{ padding: '12px 16px', textAlign: 'left' }}>Source Column (Prepopulated)</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'center' }}>Action</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left' }}>Source Column ({selectedExternalTable || 'External DB'})</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center' }}>Map Action</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Target Supabase Column ({targetTable})</th>
                 </tr>
               </thead>
