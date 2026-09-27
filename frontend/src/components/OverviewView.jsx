@@ -142,23 +142,21 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
   })();
 
   const totalProducts = products.length;
-  const readinessScore = summary?.overall_readiness_pct && summary.overall_readiness_pct > 0
-    ? summary.overall_readiness_pct
-    : (hasConnectedSources ? 100 : 95);
+  const readinessScore = summary?.overall_readiness_pct || 0;
 
-  const totalItems = summary?.total_inventory_items || (hasConnectedSources ? 150 : 0);
+  const totalItems = summary?.total_inventory_items || 0;
   const criticalCount = summary?.stockout_critical_count || 0;
   const highCount = summary?.stockout_high_count || 0;
   const stockoutRiskPct = totalItems > 0 ? ((criticalCount + highCount) / totalItems * 100).toFixed(1) : '0.0';
-  const forecastAccuracyPct = (summary?.avg_supplier_otif && summary.avg_supplier_otif > 0)
-    ? summary.avg_supplier_otif.toFixed(1)
-    : (hasConnectedSources ? '98.5' : '95.0');
+  const forecastAccuracyPct = summary?.avg_supplier_otif ? summary.avg_supplier_otif.toFixed(1) : (summary?.avg_forecast_accuracy ? summary.avg_forecast_accuracy.toFixed(1) : '0.0');
 
   const savingsFormatted = summary?.total_inventory_value && summary.total_inventory_value > 0
-    ? `$${(summary.total_inventory_value / 1000000).toFixed(2)}M`
-    : (hasConnectedSources ? '$2.45M' : '$0.00');
+    ? (summary.total_inventory_value >= 1000000 
+        ? `$${(summary.total_inventory_value / 1000000).toFixed(2)}M` 
+        : `$${summary.total_inventory_value.toLocaleString()}`)
+    : '$0.00';
 
-  const activeHubs = (summary?.total_warehouses && summary.total_warehouses > 0) ? summary.total_warehouses : (hasConnectedSources ? 1 : 0);
+  const activeHubs = summary?.total_warehouses || 0;
 
   // Format real recommendations for UI
   const displayRecs = recommendations.slice(0, 3).map((r, i) => ({
