@@ -1,18 +1,136 @@
+import datetime
 from fastapi import APIRouter, Depends, Body, HTTPException
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from backend.app.core.database import get_db
 from backend.app.services.services import SupplyChainService
 from backend.app.services.ingestion_service import IngestionService
+from backend.app.models.models import WorkspacePipelineConfig, Product
 from backend.connectors.direct_db_connector import DirectDBConnector
 from backend.connectors.zoho_connector import ZohoConnector
 from backend.connectors.sftp_connector import SFTPConnector
 
 router = APIRouter()
 
+def _get_or_create_config(db: Session) -> WorkspacePipelineConfig:
+    cfg = db.query(WorkspacePipelineConfig).filter(WorkspacePipelineConfig.workspace_key == "default").first()
+    if not cfg:
+        cfg = WorkspacePipelineConfig(
+            workspace_key="default",
+            workspace_name="Global Supply Chain",
+            workspace_region="UAE / GCC Hub",
+            industry_vertical="Retail & Distribution",
+            connector_type="DIRECT_DB",
+            is_connected=0,
+            host="aws-0-ap-southeast-1.pooler.supabase.com",
+            port=5432,
+            database_name="postgres",
+            username="postgres.cugiwyrgfptehvkexejg",
+            ssl_mode="require",
+            active_step=1,
+            target_table="products"
+        )
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+@router.get("/api/connectors/status", tags=["Wisualyst Onboarding"])
+def get_connector_status(db: Session = Depends(get_db)):
+    """
+    Returns the real persistent workspace and data source connection state from the database.
+    Ensures state is synchronized across all browsers, sessions, and laptops.
+    """
+    cfg = _get_or_create_config(db)
+    prod_count = db.query(Product).count()
+    # If the user has products ingested or marked connected, is_connected is True
+    is_conn = bool(cfg.is_connected == 1 or prod_count > 0)
+
+    return {
+        "is_connected": is_conn,
+        "workspace": {
+            "name": cfg.workspace_name or "Global Supply Chain",
+            "region": cfg.workspace_region or "UAE / GCC Hub",
+            "industry": cfg.industry_vertical or "Retail & Distribution"
+        },
+        "connector": {
+            "type": cfg.connector_type or "DIRECT_DB",
+            "host": cfg.host or "aws-0-ap-southeast-1.pooler.supabase.com",
+            "port": str(cfg.port or 5432),
+            "database": cfg.database_name or "postgres",
+            "username": cfg.username or "postgres.cugiwyrgfptehvkexejg",
+            "ssl_mode": cfg.ssl_mode or "require"
+        },
+        "discovered_tables": cfg.discovered_tables or [],
+        "active_step": cfg.active_step or (3 if is_conn else 1),
+        "target_table": cfg.target_table or "products",
+        "selected_external_table": cfg.selected_external_table or "",
+        "field_mappings": cfg.field_mappings or {},
+        "last_connected_at": cfg.last_connected_at.isoformat() if cfg.last_connected_at else None,
+        "last_ingested_at": cfg.last_ingested_at.isoformat() if cfg.last_ingested_at else None,
+        "ingestion_status": cfg.ingestion_status or ("LIVE_SYNCED" if prod_count > 0 else None),
+        "rows_ingested": cfg.rows_ingested if cfg.rows_ingested > 0 else prod_count,
+        "total_products": prod_count
+    }
+
+@router.post("/api/connectors/save-config", tags=["Wisualyst Onboarding"])
+def save_connector_config(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """
+    Saves workspace details, connector credentials, and pipeline configuration to the database.
+    """
+    cfg = _get_or_create_config(db)
+    
+    if "workspace_name" in payload and payload["workspace_name"]:
+        cfg.workspace_name = payload["workspace_name"]
+    if "workspace_region" in payload and payload["workspace_region"]:
+        cfg.workspace_region = payload["workspace_region"]
+    if "industry_vertical" in payload and payload["industry_vertical"]:
+        cfg.industry_vertical = payload["industry_vertical"]
+    if "is_connected" in payload:
+        cfg.is_connected = 1 if payload["is_connected"] else 0
+    if "host" in payload and payload["host"]:
+        cfg.host = payload["host"]
+    if "port" in payload and payload["port"]:
+        cfg.port = int(payload["port"])
+    if "database" in payload and payload["database"]:
+        cfg.database_name = payload["database"]
+    if "username" in payload and payload["username"]:
+        cfg.username = payload["username"]
+    if "ssl_mode" in payload and payload["ssl_mode"]:
+        cfg.ssl_mode = payload["ssl_mode"]
+    if "connector_type" in payload and payload["connector_type"]:
+        cfg.connector_type = payload["connector_type"]
+    if "discovered_tables" in payload:
+        cfg.discovered_tables = payload["discovered_tables"]
+    if "active_step" in payload:
+        cfg.active_step = int(payload["active_step"])
+    if "target_table" in payload and payload["target_table"]:
+        cfg.target_table = payload["target_table"]
+    if "selected_external_table" in payload:
+        cfg.selected_external_table = payload["selected_external_table"]
+    if "field_mappings" in payload:
+        cfg.field_mappings = payload["field_mappings"]
+        
+    cfg.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(cfg)
+    return {"status": "SUCCESS", "message": "Pipeline configuration saved to database successfully"}
+
+@router.post("/api/connectors/disconnect", tags=["Wisualyst Onboarding"])
+def disconnect_connector(db: Session = Depends(get_db)):
+    """
+    Disconnects the active connector and resets pipeline status across all devices.
+    """
+    cfg = _get_or_create_config(db)
+    cfg.is_connected = 0
+    cfg.active_step = 1
+    cfg.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    return {"status": "SUCCESS", "message": "Data source disconnected successfully across all devices."}
+
 @router.post("/api/connectors/test", tags=["Wisualyst Onboarding"])
-def test_connector(payload: Dict[str, Any] = Body(...)):
+def test_connector(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     c_type = payload.get("type", "DIRECT_DB").upper()
     if c_type == "DIRECT_DB":
         connector = DirectDBConnector(
@@ -23,7 +141,21 @@ def test_connector(payload: Dict[str, Any] = Body(...)):
             password=payload.get("password", ""),
             ssl_mode=payload.get("ssl_mode", "disable")
         )
-        return connector.test_connection()
+        res = connector.test_connection()
+        if res.get("status") == "SUCCESS":
+            try:
+                cfg = _get_or_create_config(db)
+                cfg.is_connected = 1
+                cfg.host = payload.get("host", cfg.host)
+                cfg.port = int(payload.get("port", cfg.port))
+                cfg.database_name = payload.get("database", cfg.database_name)
+                cfg.username = payload.get("username", cfg.username)
+                cfg.ssl_mode = payload.get("ssl_mode", cfg.ssl_mode)
+                cfg.last_connected_at = datetime.datetime.utcnow()
+                db.commit()
+            except Exception as e:
+                print(f"Error persisting connection in test: {e}")
+        return res
     elif c_type == "ZOHO":
         connector = ZohoConnector(
             client_id=payload.get("client_id", ""),
@@ -46,6 +178,7 @@ def test_connector(payload: Dict[str, Any] = Body(...)):
 @router.post("/api/connectors/discover", tags=["Wisualyst Onboarding"])
 def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     c_type = payload.get("type", "DIRECT_DB").upper()
+    tables = []
     if c_type == "DIRECT_DB":
         connector = DirectDBConnector(
             host=payload.get("host", ""),
@@ -56,9 +189,8 @@ def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(g
             ssl_mode=payload.get("ssl_mode", "disable")
         )
         tables = connector.discover_tables()
-        return {"tables": tables}
     elif c_type == "ZOHO":
-        return {"tables": ZohoConnector().discover_modules()}
+        tables = ZohoConnector().discover_modules()
     else:
         connector = SFTPConnector(
             host=payload.get("host", ""),
@@ -67,7 +199,35 @@ def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(g
             password=payload.get("password", ""),
             remote_path=payload.get("remote_path", "/exports/daily_feeds")
         )
-        return {"tables": connector.discover_files()}
+        tables = connector.discover_files()
+
+    # Automatically persist discovered tables and credentials in the central database
+    try:
+        cfg = _get_or_create_config(db)
+        cfg.is_connected = 1
+        cfg.connector_type = c_type
+        if payload.get("host"):
+            cfg.host = payload.get("host")
+        if payload.get("port"):
+            cfg.port = int(payload.get("port"))
+        if payload.get("database"):
+            cfg.database_name = payload.get("database")
+        if payload.get("username"):
+            cfg.username = payload.get("username")
+        if payload.get("ssl_mode"):
+            cfg.ssl_mode = payload.get("ssl_mode")
+        if tables:
+            cfg.discovered_tables = tables
+            if not cfg.selected_external_table and len(tables) > 0:
+                cfg.selected_external_table = tables[0].get("table_name", "")
+        cfg.last_connected_at = datetime.datetime.utcnow()
+        cfg.active_step = 3
+        cfg.updated_at = datetime.datetime.utcnow()
+        db.commit()
+    except Exception as e:
+        print(f"Error persisting connector status on discover: {e}")
+
+    return {"tables": tables}
 
 @router.post("/api/connectors/preview", tags=["Wisualyst Onboarding"])
 def preview_table(payload: Dict[str, Any] = Body(...)):
@@ -105,15 +265,41 @@ def ingest_remote_data(payload: Dict[str, Any] = Body(...), db: Session = Depend
         records = connector.fetch_records(table_name, limit=payload.get("limit", 10000))
         ingestion_svc = IngestionService(db)
         result = ingestion_svc.ingest_records(table_name, records, mappings)
+        
+        # Persist ingestion success and active step to database
+        try:
+            cfg = _get_or_create_config(db)
+            cfg.is_connected = 1
+            cfg.target_table = table_name
+            cfg.field_mappings = {m.get("source_field"): m.get("target_canonical_field") for m in mappings}
+            cfg.rows_ingested = result.get("rows_processed", 0)
+            cfg.ingestion_status = "SUCCESS"
+            cfg.last_ingested_at = datetime.datetime.utcnow()
+            cfg.active_step = 4
+            cfg.updated_at = datetime.datetime.utcnow()
+            db.commit()
+        except Exception as e:
+            print(f"Error persisting ingestion state in db: {e}")
+
         return result
     else:
         # Default fallback
         ingestion_svc = IngestionService(db)
-        return {
+        result = {
             "status": "SUCCESS",
             "message": f"Ingestion completed for connector {c_type}",
             "dataset_summary": ingestion_svc.get_summary()
         }
+        try:
+            cfg = _get_or_create_config(db)
+            cfg.is_connected = 1
+            cfg.ingestion_status = "SUCCESS"
+            cfg.last_ingested_at = datetime.datetime.utcnow()
+            cfg.active_step = 4
+            db.commit()
+        except Exception as e:
+            print(f"Error persisting ingestion state: {e}")
+        return result
 
 @router.post("/api/mapping/suggest", tags=["Wisualyst Onboarding"])
 def suggest_mapping(payload: Dict[str, Any] = Body(...)):

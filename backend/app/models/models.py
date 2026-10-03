@@ -81,6 +81,33 @@ class PermissionSetting(Base):
     om_access = Column(Integer, default=1)
     viewer_access = Column(Integer, default=0)
 
+class WorkspacePipelineConfig(Base):
+    __tablename__ = "workspace_pipeline_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_key = Column(String(100), default="default", unique=True, index=True)
+    workspace_name = Column(String(150), default="Global Supply Chain")
+    workspace_region = Column(String(100), default="UAE / GCC Hub")
+    industry_vertical = Column(String(100), default="Retail & Distribution")
+    connector_type = Column(String(50), default="DIRECT_DB")
+    is_connected = Column(Integer, default=0) # 1 = connected, 0 = disconnected
+    host = Column(String(255), nullable=True)
+    port = Column(Integer, default=5432)
+    database_name = Column(String(100), nullable=True)
+    username = Column(String(150), nullable=True)
+    ssl_mode = Column(String(20), default="require")
+    discovered_tables = Column(JSON, nullable=True)
+    field_mappings = Column(JSON, nullable=True)
+    active_step = Column(Integer, default=1)
+    target_table = Column(String(100), default="products")
+    selected_external_table = Column(String(100), nullable=True)
+    last_connected_at = Column(DateTime, nullable=True)
+    last_ingested_at = Column(DateTime, nullable=True)
+    ingestion_status = Column(String(50), nullable=True)
+    rows_ingested = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # --- 2. Core Supply Chain & Pipeline Sync Models ---
 class ProductCategory(Base):
     __tablename__ = "product_categories"

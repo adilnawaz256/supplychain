@@ -42,12 +42,21 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
     assortment: true
   });
 
+  const [isDbConnected, setIsDbConnected] = useState(() => {
+    try {
+      return localStorage.getItem('wisualyst_db_connected') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   useEffect(() => {
     async function loadWorkspaceData() {
       try {
-        const [memRes, sumRes] = await Promise.all([
+        const [memRes, sumRes, connRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/workspace/members`),
-          fetch(`${API_BASE_URL}/api/control-tower/summary`)
+          fetch(`${API_BASE_URL}/api/control-tower/summary`),
+          fetch(`${API_BASE_URL}/api/connectors/status`).catch(() => null)
         ]);
 
         if (memRes.ok) {
@@ -57,6 +66,18 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
         if (sumRes.ok) {
           const sumData = await sumRes.json();
           setSummary(sumData);
+        }
+        if (connRes && connRes.ok) {
+          const connData = await connRes.json();
+          if (connData.is_connected) {
+            setIsDbConnected(true);
+            try { localStorage.setItem('wisualyst_db_connected', 'true'); } catch (e) {}
+          }
+          if (connData.workspace) {
+            if (connData.workspace.name) setCompanyName(connData.workspace.name);
+            if (connData.workspace.region) setRegion(connData.workspace.region);
+            if (connData.workspace.industry) setWorkspaceType(connData.workspace.industry);
+          }
         }
       } catch (err) {
         console.error('Error fetching workspace data:', err);
@@ -68,7 +89,7 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
   const savedConnected = typeof window !== 'undefined' ? localStorage.getItem('wisualyst_connected_sources') : null;
   const isAnyConnected = savedConnected ? Object.values(JSON.parse(savedConnected)).some(Boolean) : false;
   const totalProducts = summary?.total_products ?? (isAnyConnected ? 50 : 0);
-  const hasData = isAnyConnected || totalProducts > 0;
+  const hasData = isDbConnected || isAnyConnected || totalProducts > 0;
   const totalTransactions = hasData
     ? `${(totalProducts * 543).toLocaleString()} rows`
     : '0 rows';

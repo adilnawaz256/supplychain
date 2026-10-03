@@ -3,18 +3,50 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from backend.app.core.database import get_db
-from backend.app.models.models import WorkspaceMember
+from backend.app.models.models import WorkspaceMember, WorkspacePipelineConfig
 
 router = APIRouter()
 
-@router.post("/api/workspace/create", tags=["Wisualyst Onboarding"])
-def create_workspace(payload: Dict[str, Any] = Body(...)):
+@router.get("/api/workspace/current", tags=["Wisualyst Onboarding"])
+def get_current_workspace(db: Session = Depends(get_db)):
+    cfg = db.query(WorkspacePipelineConfig).filter(WorkspacePipelineConfig.workspace_key == "default").first()
     return {
         "status": "SUCCESS",
         "workspace_id": "ws_dubai_retail_01",
-        "name": payload.get("name", "Wisualyst Enterprise Workspace"),
-        "industry": payload.get("industry", "Retail & Consumer Goods"),
-        "region": payload.get("region", "Global / Middle East"),
+        "name": cfg.workspace_name if cfg and cfg.workspace_name else "Global Supply Chain",
+        "industry": cfg.industry_vertical if cfg and cfg.industry_vertical else "Retail & Distribution",
+        "region": cfg.workspace_region if cfg and cfg.workspace_region else "UAE / GCC Hub",
+        "is_connected": bool(cfg and cfg.is_connected)
+    }
+
+@router.post("/api/workspace/create", tags=["Wisualyst Onboarding"])
+def create_workspace(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    name = payload.get("name", "Global Supply Chain")
+    industry = payload.get("industry", "Retail & Distribution")
+    region = payload.get("region", "UAE / GCC Hub")
+    
+    cfg = db.query(WorkspacePipelineConfig).filter(WorkspacePipelineConfig.workspace_key == "default").first()
+    if not cfg:
+        cfg = WorkspacePipelineConfig(
+            workspace_key="default",
+            workspace_name=name,
+            workspace_region=region,
+            industry_vertical=industry
+        )
+        db.add(cfg)
+    else:
+        cfg.workspace_name = name
+        cfg.workspace_region = region
+        cfg.industry_vertical = industry
+    db.commit()
+    db.refresh(cfg)
+
+    return {
+        "status": "SUCCESS",
+        "workspace_id": "ws_dubai_retail_01",
+        "name": cfg.workspace_name,
+        "industry": cfg.industry_vertical,
+        "region": cfg.workspace_region,
         "selected_modules": payload.get("modules", ["inventory", "demand", "procurement", "assortment"])
     }
 

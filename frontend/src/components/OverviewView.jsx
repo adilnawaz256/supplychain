@@ -36,17 +36,33 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
   const [recommendations, setRecommendations] = useState([]);
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isDbConnected, setIsDbConnected] = useState(() => {
+    try {
+      return localStorage.getItem('wisualyst_db_connected') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Fetch real data from backend API
   useEffect(() => {
     async function loadData() {
       try {
-        const [sumRes, prodRes, recRes, riskRes] = await Promise.all([
+        const [sumRes, prodRes, recRes, riskRes, connRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/control-tower/summary`),
           fetch(`${API_BASE_URL}/api/products`),
           fetch(`${API_BASE_URL}/api/recommendations`),
-          fetch(`${API_BASE_URL}/api/inventory-risk`)
+          fetch(`${API_BASE_URL}/api/inventory-risk`),
+          fetch(`${API_BASE_URL}/api/connectors/status`).catch(() => null)
         ]);
+
+        if (connRes && connRes.ok) {
+          const connData = await connRes.json();
+          if (connData.is_connected) {
+            setIsDbConnected(true);
+            try { localStorage.setItem('wisualyst_db_connected', 'true'); } catch (e) {}
+          }
+        }
 
         if (sumRes.ok) {
           const sumData = await sumRes.json();
@@ -129,6 +145,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
 
   // Derived real KPI metrics from backend summary & connection status
   const hasConnectedSources = (() => {
+    if (isDbConnected) return true;
     try {
       const dbConn = localStorage.getItem('wisualyst_db_connected');
       if (dbConn === 'true') return true;
