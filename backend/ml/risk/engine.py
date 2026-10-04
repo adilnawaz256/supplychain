@@ -99,7 +99,17 @@ class InventoryRiskEngine:
                 "stockout_risk_level": risk_level,
                 "reasoning": reason,
                 "recommended_order_quantity": rec_order_qty,
-                "supplier_name": supplier_name
+                "supplier_name": supplier_name,
+                "calculation_trace": {
+                    "days_of_inventory_formula": "DOI = Current Stock / Average Daily Demand",
+                    "safety_stock_formula": "SS = z * std_demand * sqrt(lead_time)",
+                    "current_stock": current_stock,
+                    "avg_daily_demand": round(avg_daily_demand, 2),
+                    "calculated_doi": f"{doi} days",
+                    "safety_threshold": f"{safety_stock} units",
+                    "lead_time": f"{lead_time} days",
+                    "data_source_tables": "inventory (current_stock), products (lead_time_days, safety_stock_min, reorder_point), sales_history"
+                }
             }
 
             if risk_filter:

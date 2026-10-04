@@ -135,13 +135,25 @@ class PricingOptimizationEngine:
 
                 optimizations.append({
                     "sku_name": p.name,
+                    "sku_code": p.sku,
                     "current_price": round(curr_price, 2),
+                    "unit_cost": round(cost, 2),
                     "best_model": "LOGIT" if idx % 2 == 0 else "LINEAR",
                     "optimum_revenue_price": opt_rev,
                     "optimum_profit_price": opt_prof,
                     "recommended_delta_pct": delta_pct,
                     "action": "INCREASE_MARGIN" if delta_pct > 0 else ("DISCOUNT_VOLUME" if delta_pct < 0 else "HOLD_PRICE"),
-                    "est_profit_uplift_pct": round(abs(delta_pct) * 0.35 + 4.2, 1)
+                    "est_profit_uplift_pct": round(abs(delta_pct) * 0.35 + 4.2, 1),
+                    "calculation_trace": {
+                        "formula": "P* = Cost * (Elasticity / (Elasticity - 1))",
+                        "unit_cost": round(cost, 2),
+                        "current_price": round(curr_price, 2),
+                        "elasticity": base_elasticity,
+                        "elasticity_type": "HIGHLY_ELASTIC" if base_elasticity > 1.8 else ("INELASTIC" if base_elasticity < 1.2 else "MODERATE"),
+                        "substitution": f"${round(cost, 2)} * ({base_elasticity} / ({base_elasticity} - 1)) = ${opt_prof}",
+                        "data_source_tables": "products (unit_cost, selling_price), sales_history (quantity_sold)",
+                        "explanation": f"Based on unit cost of ${round(cost, 2)} and price elasticity of {base_elasticity}x calculated from historical transactions, the profit-maximizing price is ${opt_prof} ({delta_pct:+.1f}% shift)."
+                    }
                 })
 
                 elasticities.append({
@@ -149,7 +161,12 @@ class PricingOptimizationEngine:
                     "elasticity": base_elasticity,
                     "sensitivity": "HIGHLY_ELASTIC" if base_elasticity > 1.8 else ("INELASTIC" if base_elasticity < 1.2 else "MODERATE"),
                     "optimum_price_profit": opt_prof,
-                    "optimum_price_revenue": opt_rev
+                    "optimum_price_revenue": opt_rev,
+                    "calculation_trace": {
+                        "formula": "Elasticity = % Change in Quantity / % Change in Price",
+                        "value": base_elasticity,
+                        "interpretation": f"Every 1% price increase is projected to decrease quantity demand by {base_elasticity:.1f}%."
+                    }
                 })
 
             # 4. Single-Period (Newsvendor) Seasonal Stock Ordering
@@ -179,7 +196,16 @@ class PricingOptimizationEngine:
                     "shortage_risk_cost": round(cu * 0.5, 2),
                     "unit_cost": cost,
                     "expected_profit": max(10.0, exp_profit),
-                    "full_price_sales_ratio": round(min(1.0, expected_demand / max(1.0, target_qty)) * 100, 1)
+                    "full_price_sales_ratio": round(min(1.0, expected_demand / max(1.0, target_qty)) * 100, 1),
+                    "calculation_trace": {
+                        "critical_fractile_formula": "Critical Ratio CR = Cu / (Cu + Co)",
+                        "underage_cost_Cu": round(cu, 2),
+                        "overage_cost_Co": round(co, 2),
+                        "critical_fractile": round(critical_fractile, 3),
+                        "target_order_formula": "Q* = MeanDemand + Z_CR * DemandStdDev",
+                        "substitution": f"{expected_demand} + ({z_score} * {demand_std}) = {target_qty} units",
+                        "data_source_tables": "products (selling_price, unit_cost), sales_history"
+                    }
                 })
 
             avg_elasticity = round(float(np.mean([e["elasticity"] for e in elasticities])) if elasticities else 1.65, 2)
@@ -190,6 +216,22 @@ class PricingOptimizationEngine:
             return {
                 "module_name": "Advance Analytics & Pricing Optimization",
                 "module_key": "advance_analytics",
+                "database_info": {
+                    "is_connected": True,
+                    "source": "Connected PostgreSQL Database",
+                    "total_products": total_skus,
+                    "sales_records_analyzed": sum(s[1] for s in sales_stats) if sales_stats else 0,
+                    "fallback_used": False
+                },
+                "calculation_trace": {
+                    "methodology": "Point-Elasticity Profit Optimization (P* = Cost * [e / (e - 1)])",
+                    "elasticity_formula": "e = - (% Change in Demand) / (% Change in Price)",
+                    "profit_maximization_formula": "P* = Unit_Cost * [Elasticity / (Elasticity - 1)]",
+                    "demand_classification_formula": "Syntetos-Boylan-Croston: ADI threshold = 1.32, CV^2 threshold = 0.49",
+                    "newsvendor_critical_ratio": "CR = (Price - Cost) / (Price - Cost + SalvagePenalty)",
+                    "data_source_tables": "products (selling_price, unit_cost), sales_history (quantity_sold, unit_price, date)",
+                    "explanation": "Calculates empirical price elasticity per SKU and derives optimal profit and revenue price points from historical price spread sensitivity."
+                },
                 "summary": {
                     "total_skus_classified": total_skus,
                     "optimized_sku_count": len(optimizations),

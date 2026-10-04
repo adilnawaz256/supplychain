@@ -121,7 +121,15 @@ class CustomerLTVSegmentationEngine:
                     "rfm_monetary_score": m_score,
                     "overall_rfm_score": overall_score,
                     "ltv_segment": seg,
-                    "churn_risk": churn_risk
+                    "churn_risk": churn_risk,
+                    "calculation_trace": {
+                        "recency_formula": "Days since latest order date in orders table",
+                        "frequency_formula": "Total completed orders count",
+                        "monetary_formula": "Total spend sum(order.total_amount)",
+                        "rfm_scores": f"Recency={r_score}/5, Frequency={f_score}/5, Monetary={m_score}/5",
+                        "composite_score_formula": "Overall RFM = (R + F + M) / 3",
+                        "data_source_tables": "customers (name, customer_code), orders (total_amount, order_date)"
+                    }
                 }
                 customers.append(item)
 
@@ -178,6 +186,23 @@ class CustomerLTVSegmentationEngine:
             return {
                 "module_name": "Customer Segmentation & Lifetime Value",
                 "module_key": "customer_ltv",
+                "database_info": {
+                    "is_connected": True,
+                    "source": "Connected PostgreSQL Database",
+                    "customers_analyzed": total_cust,
+                    "total_portfolio_revenue": round(total_revenue, 2),
+                    "fallback_used": False
+                },
+                "calculation_trace": {
+                    "methodology": "RFM (Recency, Frequency, Monetary) Quantile Clustering",
+                    "recency_formula": "Days elapsed since the customer's most recent order date",
+                    "frequency_formula": "Total number of completed orders in orders table",
+                    "monetary_formula": "Cumulative revenue spend sum(orders.total_amount)",
+                    "composite_rfm_score": "Overall Score = (R_Score + F_Score + M_Score) / 3",
+                    "segmentation_cutoff": "High-LTV: Score >= 3.5 & Spend > P75; Mid-LTV: Score >= 2.2; Low-LTV: Score < 2.2",
+                    "data_source_tables": "customers (name, customer_code), orders (total_amount, order_date)",
+                    "explanation": "Segmented customer base into behavioral tiers using transactional quantiles to distinguish high-value accounts from churn risks."
+                },
                 "summary": {
                     "total_customers_analyzed": total_cust,
                     "total_portfolio_ltv": round(total_revenue, 2),

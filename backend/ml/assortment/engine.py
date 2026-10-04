@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from backend.app.models.models import Product, RetailSpace, Inventory, SalesHistory
+from backend.app.models.models import Product, ProductCategory, RetailSpace, Inventory, SalesHistory
 
 class AssortmentOptimizerEngine:
     """
@@ -14,6 +14,10 @@ class AssortmentOptimizerEngine:
 
     def generate_assortment_intelligence(self) -> Dict[str, Any]:
         products = self.db.query(Product).all()
+
+        # Bulk-fetch categories in 1 query
+        cat_rows = self.db.query(ProductCategory).all()
+        cat_map = {c.id: c.name for c in cat_rows}
 
         # Bulk-fetch retail space per product in 1 query instead of N+1 per-product lookups
         space_rows = self.db.query(RetailSpace).all()
@@ -69,7 +73,7 @@ class AssortmentOptimizerEngine:
                 "product_id": p.id,
                 "sku": p.sku,
                 "product_name": p.name,
-                "category": p.category.name if p.category else "General",
+                "category": cat_map.get(p.category_id, "General"),
                 "allocated_space_sqm": allocated_sqm,
                 "display_units": display_units,
                 "shelf_capacity": shelf_cap,
@@ -79,7 +83,16 @@ class AssortmentOptimizerEngine:
                 "revenue_per_sqm": rev_per_sqm,
                 "gmroi": gmroi,
                 "sell_through_pct": sell_through_pct,
-                "classification": classif
+                "classification": classif,
+                "calculation_trace": {
+                    "gmroi_formula": "GMROI = (Gross Margin $ * Units Sold) / (Display Units * Unit Cost)",
+                    "sell_through_formula": "Sell-Through = (Units Sold / (Units Sold + Display Units)) * 100%",
+                    "revenue_per_sqm_formula": "Revenue / Allocated Square Meters",
+                    "calculated_gmroi": gmroi,
+                    "calculated_sell_through": f"{sell_through_pct}%",
+                    "calculated_rev_per_sqm": f"${rev_per_sqm}",
+                    "data_source_tables": "retail_spaces (allocated_space_sqm, display_units), products (unit_cost, selling_price), sales_history (quantity_sold, revenue)"
+                }
             })
 
         # Sort SKUs by revenue productivity
@@ -90,6 +103,23 @@ class AssortmentOptimizerEngine:
         low_productivity_count = sum(1 for x in sku_assortment if x["classification"] in ["UNDERPERFORMER", "SLOW_MOVER"])
 
         return {
+            "module_name": "Retail Assortment & Space Optimizer",
+            "module_key": "assortment",
+            "database_info": {
+                "is_connected": True,
+                "source": "Connected PostgreSQL Database",
+                "products_evaluated": len(products),
+                "total_allocated_sqm": round(total_allocated_sqm, 1),
+                "fallback_used": False
+            },
+            "calculation_trace": {
+                "methodology": "Space Productivity & GMROI Space-Allocation Optimization",
+                "gmroi_equation": "GMROI = (Gross Margin $ / Average Inventory Value at Cost) = (Gross Margin % * Turnover)",
+                "sell_through_equation": "Sell-Through Rate = [Units Sold / (Units Sold + Shelf Display Units)] * 100%",
+                "rev_per_sqm_equation": "Revenue Productivity = Total Category Revenue / Allocated Linear Shelf Space (sqm)",
+                "data_source_tables": "retail_spaces (allocated_space_sqm, display_units), products (selling_price, unit_cost), sales_history",
+                "explanation": "Calculates space elasticity to reallocate low-productivity shelf space to high-GMROI star products."
+            },
             "total_allocated_space_sqm": round(total_allocated_sqm, 1),
             "avg_store_gmroi": avg_gmroi,
             "avg_sell_through_pct": avg_sell_through,
