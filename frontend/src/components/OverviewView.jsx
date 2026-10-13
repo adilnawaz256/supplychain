@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Tooltip as InfoTooltip } from 'react-tooltip';
 import {
   TrendingUp,
   Box,
@@ -206,7 +207,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         {/* KPI 1: Readiness Score */}
         <div
           className="ui-card ui-card-hover"
-          title="CALCULATION METHODOLOGY: Readiness Score (0-100%) is calculated as a weighted data health index based on schema completeness, mandatory canonical field coverage, and active database pipeline sync across your network."
+          data-tooltip-id="kpi-tip"
+          data-tooltip-content="CALCULATION METHODOLOGY: Readiness Score (0-100) is the average of four coverage checks: the % of products that have inventory records, sales history, a linked supplier, and retail space data. It measures how complete your data is, not whether the values are correct."
           style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}
         >
           <div>
@@ -252,7 +254,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         {/* KPI 2: Stockout Risk */}
         <div
           className="ui-card ui-card-hover"
-          title="CALCULATION METHODOLOGY: Stockout Risk % is calculated as (Critical SKUs + High Risk SKUs) / Total SKUs * 100%. Identifies products where current stock is less than or equal to safety stock or reorder point thresholds."
+          data-tooltip-id="kpi-tip"
+          data-tooltip-content="CALCULATION METHODOLOGY: Stockout Risk % = (Critical lines + High lines) / Total inventory lines * 100. A line is one product in one warehouse. Critical: stock below safety stock, or days of inventory below supplier lead time. High: stock at or below reorder point, or days of inventory within 3 days of lead time."
           style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}
         >
           <div>
@@ -284,7 +287,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         {/* KPI 3: Forecast Accuracy */}
         <div
           className="ui-card ui-card-hover"
-          title="How it's calculated: we hide the most recent sales (28 days, or 7 when history is short), predict them from the earlier days, and compare the predicted totals with what really sold. Accuracy = 100% - (total miss / units really sold)."
+          data-tooltip-id="kpi-tip"
+          data-tooltip-content="How it's calculated: we hide the most recent sales (28 days, or 7 when history is short), predict them from the earlier days, and compare the predicted totals with what really sold. Accuracy = 100% - (total miss / units really sold)."
           style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}
         >
           <div>
@@ -316,7 +320,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         {/* KPI 4: Total Inventory Value / Savings */}
         <div
           className="ui-card ui-card-hover"
-          title="CALCULATION METHODOLOGY: Portfolio Value is calculated as SUM(current_stock * unit_cost) across all active products, inventory records, and warehouse distribution hubs."
+          data-tooltip-id="kpi-tip"
+          data-tooltip-content="CALCULATION METHODOLOGY: Portfolio Value = SUM(current_stock * unit_cost) over every inventory line (one product in one warehouse). Stock is valued at cost price, not selling price. Hubs = number of warehouses."
           style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}
         >
           <div>
@@ -346,6 +351,11 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
           </div>
         </div>
       </div>
+      <InfoTooltip
+        id="kpi-tip"
+        place="bottom"
+        style={{ maxWidth: '320px', fontSize: '0.8rem', lineHeight: 1.5, borderRadius: '8px', backgroundColor: '#0f172a', zIndex: 1000 }}
+      />
 
       <HomeInsightsPanel onNavigate={onNavigate} onLoaded={handleInsightsLoaded} />
 

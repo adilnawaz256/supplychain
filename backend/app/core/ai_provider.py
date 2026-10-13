@@ -244,7 +244,7 @@ class DeterministicRuleBasedProvider(GenAIProvider):
             response_text = (
                 f"**Supply Chain Control Tower Overview**:\n"
                 f"• Total Products Managed: **{summary['total_products']}** across **{summary['total_warehouses']} Warehouses**\n"
-                f"• Total Inventory Valuation: **AED {summary['total_inventory_value']:,.2f}**\n"
+                f"• Total Inventory Valuation: **${summary['total_inventory_value']:,.2f}**\n"
                 f"• Stockout Alerts: **{summary['stockout_critical_count']} Critical**, **{summary['stockout_high_count']} High**\n"
                 f"• Excess Inventory SKUs: **{summary['excess_inventory_count']}**\n"
                 f"• Open Purchase Orders: **{summary['open_purchase_orders']}**"
