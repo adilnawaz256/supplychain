@@ -158,7 +158,7 @@ export default function CalculationExplainerModal({ item, onClose }) {
                 Algorithm Result / Recommendation
               </div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                {item.resultValue || item.output || 'Computed Value'}
+                {item.resultValue ?? item.output ?? '—'}
               </div>
               {item.subtitle && (
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>

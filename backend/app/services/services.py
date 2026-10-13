@@ -21,6 +21,7 @@ from backend.app.services.mapping_engine import CanonicalMappingEngine
 from backend.app.services.validation_engine import DataValidationEngine
 
 import time
+from datetime import datetime, timedelta
 
 SUMMARY_CACHE: Dict[str, Any] = {"timestamp": 0, "data": None}
 
@@ -57,23 +58,28 @@ class SupplyChainService:
         total_whs = self.db.query(Warehouse).count()
         total_inv_items = self.db.query(Inventory).count()
 
+        readiness = self.validation_engine.evaluate_readiness()
+
         if total_prods == 0:
-            readiness = self.validation_engine.evaluate_readiness()
             res = {
                 "total_products": 0,
                 "total_warehouses": total_whs,
-                "total_inventory_items": 0,
+                "total_inventory_items": total_inv_items,
                 "total_inventory_value": 0.0,
                 "stockout_critical_count": 0,
                 "stockout_high_count": 0,
                 "excess_inventory_count": 0,
-                "open_purchase_orders": 0,
-                "recent_sales_30d_revenue": 0.0,
+                "open_purchase_orders": self.db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(["PENDING", "ISSUED", "OPEN"])).count(),
+                "recent_sales_30d_revenue": None,
+                "recent_sales_window_end": None,
                 "top_risk_products": [],
-                "potential_savings": 0.0,
-                "avg_supplier_otif": 0.0,
-                "avg_store_gmroi": 0.0,
-                "overall_readiness_pct": readiness.get("overall_readiness_pct", 0.0)
+                "potential_savings": None,
+                "avg_supplier_otif": None,
+                "avg_store_gmroi": None,
+                "overall_readiness_pct": readiness.get("overall_readiness_pct"),
+                "modules_readiness": readiness.get("modules"),
+                "dataset_summary": readiness.get("dataset_summary"),
+                "can_launch_workspace": readiness.get("can_launch_workspace")
             }
             SUMMARY_CACHE["timestamp"] = now
             SUMMARY_CACHE["data"] = res
@@ -91,38 +97,40 @@ class SupplyChainService:
         high_count = sum(1 for r in risks if r["stockout_risk_level"] == "HIGH")
         excess_count = sum(1 for r in risks if r["stockout_risk_level"] == "LOW")
 
-        open_pos = self.db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(["PENDING", "ISSUED"])).count()
+        open_pos = self.db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(["PENDING", "ISSUED", "OPEN"])).count()
 
-        # Fast SQL sum for sales revenue
-        rev_total = float(
-            self.db.query(func.coalesce(func.sum(SalesHistory.revenue), 0.0)).scalar() or 0.0
-        )
+        # Revenue over the last 30 days up to the latest sale date in sales_history
+        latest_sale = self.db.query(func.max(SalesHistory.date)).scalar()
+        if latest_sale is not None and not isinstance(latest_sale, datetime):
+            latest_sale = datetime.fromisoformat(str(latest_sale))
+        if latest_sale is not None:
+            recent_rev: Optional[float] = round(float(
+                self.db.query(func.coalesce(func.sum(SalesHistory.revenue), 0.0))
+                .filter(SalesHistory.date > latest_sale - timedelta(days=30), SalesHistory.date <= latest_sale)
+                .scalar() or 0.0
+            ), 2)
+        else:
+            recent_rev = None
 
         top_risks = [r for r in risks if r["stockout_risk_level"] in ["CRITICAL", "HIGH"]][:10]
-        readiness = self.validation_engine.evaluate_readiness()
 
-        # Dynamic supplier OTIF
-        suppliers = self.db.query(Supplier).all()
-        avg_otif = round(sum(getattr(s, "otif_score", 92.5) or 92.5 for s in suppliers) / max(1, len(suppliers)), 1) if suppliers else 94.5
+        # Supplier OTIF: average of the suppliers that have an otif_score
+        otif_avg = self.db.query(func.avg(Supplier.otif_score)).filter(Supplier.otif_score.isnot(None)).scalar()
+        avg_otif = round(float(otif_avg), 1) if otif_avg is not None else None
 
-        # Dynamic GMROI: Gross Margin / Total Inventory Value
+        # GMROI: (all-time sales revenue - cost of goods sold) / current inventory value at cost
+        rev_total = float(self.db.query(func.coalesce(func.sum(SalesHistory.revenue), 0.0)).scalar() or 0.0)
         total_cogs = float(
             self.db.query(func.coalesce(func.sum(SalesHistory.quantity_sold * Product.unit_cost), 0.0))
             .join(Product, SalesHistory.product_id == Product.id)
             .scalar() or 0.0
         )
-        gross_margin = max(0.0, rev_total - total_cogs)
-        dyn_gmroi = round(gross_margin / max(1.0, total_inv_value), 2) if total_inv_value > 0 else 3.8
-        dyn_gmroi = max(1.2, min(8.5, dyn_gmroi))
+        has_sales = latest_sale is not None
+        dyn_gmroi = round((rev_total - total_cogs) / total_inv_value, 2) if (has_sales and total_inv_value > 0) else None
 
-        # Dynamic potential procurement savings
-        try:
-            proc_intel = self.procurement_engine.generate_procurement_intelligence()
-            potential_savings = float(proc_intel.get("potential_savings", 0.0))
-            if potential_savings <= 0:
-                potential_savings = round(total_inv_value * 0.045, 2)
-        except Exception:
-            potential_savings = round(total_inv_value * 0.045, 2)
+        # Potential procurement savings: only the procurement engine's computed value
+        proc_intel = self.procurement_engine.generate_procurement_intelligence()
+        potential_savings = proc_intel.get("potential_savings")
 
         res = {
             "total_products": total_prods,
@@ -133,15 +141,16 @@ class SupplyChainService:
             "stockout_high_count": high_count,
             "excess_inventory_count": excess_count,
             "open_purchase_orders": open_pos,
-            "recent_sales_30d_revenue": round(rev_total, 2),
+            "recent_sales_30d_revenue": recent_rev,
+            "recent_sales_window_end": latest_sale.isoformat() if latest_sale is not None else None,
             "top_risk_products": top_risks,
-            "potential_savings": round(potential_savings, 2),
+            "potential_savings": round(potential_savings, 2) if potential_savings is not None else None,
             "avg_supplier_otif": avg_otif,
             "avg_store_gmroi": dyn_gmroi,
-            "overall_readiness_pct": readiness.get("overall_readiness_pct", 100.0),
-            "modules_readiness": readiness.get("modules", {}),
-            "dataset_summary": readiness.get("dataset_summary", {}),
-            "can_launch_workspace": readiness.get("can_launch_workspace", True)
+            "overall_readiness_pct": readiness.get("overall_readiness_pct"),
+            "modules_readiness": readiness.get("modules"),
+            "dataset_summary": readiness.get("dataset_summary"),
+            "can_launch_workspace": readiness.get("can_launch_workspace")
         }
         SUMMARY_CACHE["timestamp"] = now
         SUMMARY_CACHE["data"] = res

@@ -82,7 +82,7 @@ export default function DashboardView({ onNavigate }) {
         <div className="ui-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Total Inventory Value</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
-            ${(summary?.total_inventory_value ?? 0).toLocaleString()}
+            {summary?.total_inventory_value != null && !Number.isNaN(Number(summary.total_inventory_value)) ? `$${Number(summary.total_inventory_value).toLocaleString()}` : '—'}
           </div>
           <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
             {warehouses.length} Regional Hubs
@@ -92,7 +92,7 @@ export default function DashboardView({ onNavigate }) {
         <div className="ui-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Supplier OTIF Average</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: summary?.avg_supplier_otif ? '#10b981' : '#94a3b8', margin: '4px 0' }}>
-            {(summary?.avg_supplier_otif ?? 0).toFixed(1)}%
+            {summary?.avg_supplier_otif != null && !Number.isNaN(Number(summary.avg_supplier_otif)) ? `${Number(summary.avg_supplier_otif).toFixed(1)}%` : '—'}
           </div>
           <div style={{ fontSize: '0.72rem', color: summary?.avg_supplier_otif ? '#10b981' : '#94a3b8', fontWeight: 600 }}>
             {summary?.avg_supplier_otif ? '↑ On-Time In-Full' : 'No Supplier Data'}
@@ -156,7 +156,7 @@ export default function DashboardView({ onNavigate }) {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Capacity</div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>
-                      {wh.capacity?.toLocaleString()} sqft
+                      {wh.capacity != null ? `${Number(wh.capacity).toLocaleString()} sqft` : '—'}
                     </div>
                   </div>
                 </div>

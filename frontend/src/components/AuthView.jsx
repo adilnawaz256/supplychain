@@ -132,10 +132,6 @@ export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'l
     }
   };
 
-  const readinessScore = 100;
-  const criticalLines = 0;
-  const otifPct = 98.5;
-  const totalValueFormatted = '$0.00M';
 
   return (
     <div style={{
@@ -332,19 +328,19 @@ export default function AuthView({ onAuthSuccess, onBypassDemo, initialMode = 'l
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
               <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Readiness</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#2563eb' }}>{Math.round(readinessScore)}/100</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#2563eb' }}>—</div>
               </div>
               <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Stockout Risk</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#8b5cf6' }}>{criticalLines} SKUs</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#8b5cf6' }}>—</div>
               </div>
               <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Supplier OTIF</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0284c7' }}>{otifPct}%</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0284c7' }}>—</div>
               </div>
               <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Portfolio Value</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#059669' }}>{totalValueFormatted}</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#059669' }}>—</div>
               </div>
             </div>
 

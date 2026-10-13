@@ -50,6 +50,12 @@ import CalculationExplainerModal from './CalculationExplainerModal';
 import DatabaseStatusBar from './DatabaseStatusBar';
 import GlobalMathExplainerModal from './GlobalMathExplainerModal';
 
+// Formatting helpers: never invent numbers — null/undefined/NaN render as '—'
+const isNum = (v) => v != null && v !== '' && !Number.isNaN(Number(v));
+const fmt = (v, d = 1) => (isNum(v) ? Number(v).toFixed(d) : '—');
+const fmtInt = (v) => (isNum(v) ? Math.round(Number(v)).toLocaleString() : '—');
+const fmtRaw = (v) => (v == null || v === '' ? '—' : v);
+
 export default function IntelligenceEnginesView() {
   const [activeEngine, setActiveEngine] = useState('pricing');
   const [demandShift, setDemandShift] = useState(15);
@@ -57,7 +63,6 @@ export default function IntelligenceEnginesView() {
   const [serviceLevel, setServiceLevel] = useState(95);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
 
   // Engine data states from real DB
   const [demandData, setDemandData] = useState(null);
@@ -141,21 +146,6 @@ export default function IntelligenceEnginesView() {
     loadEngines();
   }, []);
 
-  const handleSeedBenchmarkData = async () => {
-    setIsSeeding(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/database/seed`, { method: 'POST' });
-      if (res.ok) {
-        await fetchConnectorStatus();
-        await loadEngines();
-      }
-    } catch (e) {
-      console.error('Error seeding database:', e);
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
   const handleRunMultiAgentWorkflow = async () => {
     setIsRunningWorkflow(true);
     setWorkflowStatusMsg('Executing 4 Multi-AI Specialist Agents in parallel on live database...');
@@ -186,7 +176,7 @@ export default function IntelligenceEnginesView() {
   const forecastPoints = demandData?.forecast_data || demandData?.forecast_points || [];
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const chartData = forecastPoints.map((pt, i) => {
-    const baselineVal = pt.forecasted_demand ?? pt.predicted_demand ?? 0;
+    const baselineVal = pt.forecasted_demand ?? pt.predicted_demand ?? null;
     let formattedDate = `Day ${i + 1}`;
     if (pt.date && pt.date.includes('-')) {
       const parts = pt.date.split('-');
@@ -200,9 +190,9 @@ export default function IntelligenceEnginesView() {
     }
     return {
       date: formattedDate,
-      baseline: Math.round(baselineVal),
-      simulated: Math.round(baselineVal * (1 + demandShift / 100)),
-      safetyThreshold: Math.round(pt.lower_bound ?? baselineVal * 0.8)
+      baseline: isNum(baselineVal) ? Math.round(baselineVal) : null,
+      simulated: isNum(baselineVal) ? Math.round(baselineVal * (1 + demandShift / 100)) : null,
+      safetyThreshold: isNum(pt.lower_bound) ? Math.round(pt.lower_bound) : null
     };
   });
 
@@ -223,6 +213,17 @@ export default function IntelligenceEnginesView() {
   // Pricing optimization items
   const pricingOptimizations = pricingData?.optimizations || [];
   const selectedSimOpt = pricingOptimizations[priceSimSku] || pricingOptimizations[0];
+  // What-if uses the SKU's real fitted elasticity and unit cost; null when not available
+  const simElasticity = isNum(selectedSimOpt?.calculation_trace?.elasticity) ? Math.abs(Number(selectedSimOpt.calculation_trace.elasticity)) : null;
+  const simDemandPct = simElasticity != null ? -simElasticity * simulatedPriceDelta : null;
+  const simProfitPct = (() => {
+    const P = Number(selectedSimOpt?.current_price);
+    const C = Number(selectedSimOpt?.unit_cost);
+    if (simElasticity == null || !isNum(selectedSimOpt?.current_price) || !isNum(selectedSimOpt?.unit_cost) || P - C === 0) return null;
+    const d = simulatedPriceDelta / 100;
+    return (((P * (1 + d) - C) * (1 - simElasticity * d)) / (P - C) - 1) * 100;
+  })();
+  const signed = (v, d = 1) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}%`);
 
   return (
     <div style={{ padding: '0 32px 32px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -232,11 +233,9 @@ export default function IntelligenceEnginesView() {
         connectorStatus={connectorStatus}
         onRefresh={loadEngines}
         onOpenGlobalExplainer={() => setIsGlobalMathOpen(true)}
-        onSeedBenchmark={handleSeedBenchmarkData}
-        isSeeding={isSeeding}
         isLoading={isLoading}
-        totalProducts={pricingData?.summary?.total_skus_classified || connectorStatus?.total_products}
-        totalSales={pricingData?.database_info?.sales_records_analyzed || '1,086'}
+        totalProducts={pricingData?.summary?.total_skus_classified ?? connectorStatus?.total_products}
+        totalSales={pricingData?.database_info?.sales_records_analyzed}
       />
 
       {/* 2. Top Banner Alert for Multi-Agent AI Engine */}
@@ -419,13 +418,13 @@ export default function IntelligenceEnginesView() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#d97706' }}>
-                    +{pricingData?.summary?.avg_profit_uplift_potential_pct || 12.9}%
+                    {isNum(pricingData?.summary?.avg_profit_uplift_potential_pct) ? `+${pricingData.summary.avg_profit_uplift_potential_pct}%` : '—'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#92400e', fontWeight: 600 }}>Profit Uplift Potential</div>
                 </div>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
-                    {pricingData?.summary?.total_skus_classified || 20}
+                    {fmtRaw(pricingData?.summary?.total_skus_classified)}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>SKUs Classified</div>
                 </div>
@@ -441,14 +440,13 @@ export default function IntelligenceEnginesView() {
               onClick={() => setSelectedExplanation({
                 title: 'Portfolio Price Elasticity',
                 metricName: 'Average Price Elasticity',
-                resultValue: `${pricingData?.summary?.avg_price_elasticity || 2.61}x`,
+                resultValue: isNum(pricingData?.summary?.avg_price_elasticity) ? `${pricingData.summary.avg_price_elasticity}x` : '—',
                 subtitle: 'Demand Response Sensitivity across catalog',
                 formula: 'ε = ( %Δ Quantity Demanded ) / ( %Δ Selling Price )',
-                formulaExplanation: 'Measures how sensitive transaction volume is to price modifications. An elasticity of 2.61x indicates a highly elastic portfolio where customers are price-conscious.',
+                formulaExplanation: 'Measures how sensitive transaction volume is to price modifications. An elasticity above 1 indicates an elastic portfolio where customers are price-conscious.',
                 inputs: [
-                  { name: 'Products Evaluated', source: 'products table', value: `${pricingData?.summary?.total_skus_classified || 20} items` },
-                  { name: 'Historical Transactions', source: 'sales_history table', value: '1,086 rows' },
-                  { name: 'Average Spread', source: 'products.unit_cost vs selling_price', value: '45.8% gross margin' }
+                  { name: 'Products Evaluated', source: 'products table', value: `${fmtRaw(pricingData?.summary?.total_skus_classified)} items` },
+                  { name: 'Historical Transactions', source: 'sales_history table', value: `${fmtInt(pricingData?.database_info?.sales_records_analyzed)} rows` }
                 ],
                 steps: [
                   { stepTitle: '1. Regression Fit', stepDetail: 'Linear regression fitted on historical sales quantities against recorded selling prices per SKU.', isMath: false },
@@ -462,17 +460,17 @@ export default function IntelligenceEnginesView() {
                 <HelpCircle size={14} color="#94a3b8" />
               </div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                {pricingData?.summary?.avg_price_elasticity || 2.61}x
+                {isNum(pricingData?.summary?.avg_price_elasticity) ? `${pricingData.summary.avg_price_elasticity}x` : '—'}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600, marginTop: '2px' }}>
-                ● Highly Elastic Portfolio (Click to inspect)
+                ● {isNum(pricingData?.summary?.avg_price_elasticity) ? (Number(pricingData.summary.avg_price_elasticity) > 1 ? 'Elastic Portfolio' : 'Inelastic Portfolio') : 'Needs data'} (Click to inspect)
               </div>
             </div>
 
             <div className="ui-card" style={{ padding: '16px' }}>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Lumpy/Intermittent Demand</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                {pricingData?.summary?.lumpy_or_intermittent_pct || 60.0}%
+                {isNum(pricingData?.summary?.lumpy_or_intermittent_pct) ? `${pricingData.summary.lumpy_or_intermittent_pct}%` : '—'}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600, marginTop: '2px' }}>
                 Requires Croston / Newsvendor
@@ -482,7 +480,7 @@ export default function IntelligenceEnginesView() {
             <div className="ui-card" style={{ padding: '16px' }}>
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Optimized Top SKUs</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                {pricingData?.summary?.optimized_sku_count || pricingOptimizations.length} SKUs
+                {pricingData?.summary?.optimized_sku_count ?? pricingOptimizations.length} SKUs
               </div>
               <div style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, marginTop: '2px' }}>
                 Linear & Logit Fitted on DB
@@ -534,15 +532,15 @@ export default function IntelligenceEnginesView() {
                           {opt.sku_name}
                           {opt.sku_code && <span style={{ display: 'block', fontSize: '0.68rem', color: '#64748b', fontWeight: 400 }}>{opt.sku_code}</span>}
                         </td>
-                        <td style={{ padding: '10px 8px', color: '#64748b' }}>${opt.current_price}</td>
-                        <td style={{ padding: '10px 8px', fontWeight: 700, color: '#059669' }}>${opt.optimum_profit_price}</td>
+                        <td style={{ padding: '10px 8px', color: '#64748b' }}>{isNum(opt.current_price) ? `$${opt.current_price}` : '—'}</td>
+                        <td style={{ padding: '10px 8px', fontWeight: 700, color: '#059669' }}>{isNum(opt.optimum_profit_price) ? `$${opt.optimum_profit_price}` : '—'}</td>
                         <td style={{ padding: '10px 8px' }}>
                           <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#334155' }}>
                             {opt.best_model}
                           </span>
                         </td>
                         <td style={{ padding: '10px 8px', fontWeight: 800, color: '#d97706' }}>
-                          +{opt.est_profit_uplift_pct}%
+                          {isNum(opt.est_profit_uplift_pct) ? `+${opt.est_profit_uplift_pct}%` : '—'}
                         </td>
                         <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                           <button
@@ -555,15 +553,15 @@ export default function IntelligenceEnginesView() {
                               formula: 'P* = Unit_Cost × [ ε / (ε - 1) ]',
                               formulaExplanation: 'First-order condition derived from equating marginal revenue to marginal cost (MR = MC) on empirical price elasticity curve.',
                               inputs: [
-                                { name: 'Unit Acquisition Cost (C)', source: 'products.unit_cost', value: `$${opt.unit_cost || (opt.current_price * 0.6).toFixed(2)}` },
+                                { name: 'Unit Acquisition Cost (C)', source: 'products.unit_cost', value: isNum(opt.unit_cost) ? `$${opt.unit_cost}` : '—' },
                                 { name: 'Current Selling Price (P)', source: 'products.selling_price', value: `$${opt.current_price}` },
-                                { name: 'Price Elasticity (ε)', source: 'sales_history regression', value: `${opt.calculation_trace?.elasticity || 2.61}x` },
-                                { name: 'Demand Sensitivity', source: 'pricing_engine', value: opt.calculation_trace?.elasticity_type || 'HIGHLY_ELASTIC' }
+                                { name: 'Price Elasticity (ε)', source: 'sales_history regression', value: isNum(opt.calculation_trace?.elasticity) ? `${opt.calculation_trace.elasticity}x` : '—' },
+                                { name: 'Demand Sensitivity', source: 'pricing_engine', value: fmtRaw(opt.calculation_trace?.elasticity_type) }
                               ],
                               steps: [
-                                { stepTitle: '1. Cost Extraction from DB', stepDetail: `Loaded unit cost C = $${opt.unit_cost || (opt.current_price * 0.6).toFixed(2)} from connected database products table.`, isMath: false },
-                                { stepTitle: '2. Elasticity Multiplier', stepDetail: `Multiplier = ε / (ε - 1) = ${(opt.calculation_trace?.elasticity || 2.61)} / (${(opt.calculation_trace?.elasticity || 2.61)} - 1) = ${((opt.calculation_trace?.elasticity || 2.61) / ((opt.calculation_trace?.elasticity || 2.61) - 1)).toFixed(3)}x.`, isMath: true },
-                                { stepTitle: '3. Unconstrained Optimal Price', stepDetail: `P* = $${opt.unit_cost || (opt.current_price * 0.6).toFixed(2)} × ${((opt.calculation_trace?.elasticity || 2.61) / ((opt.calculation_trace?.elasticity || 2.61) - 1)).toFixed(3)} = $${opt.optimum_profit_price}.`, isMath: true },
+                                { stepTitle: '1. Cost Extraction from DB', stepDetail: isNum(opt.unit_cost) ? `Loaded unit cost C = $${opt.unit_cost} from connected database products table.` : 'Unit cost not available in products table — needs data.', isMath: false },
+                                { stepTitle: '2. Elasticity Multiplier', stepDetail: isNum(opt.calculation_trace?.elasticity) ? `Multiplier = ε / (ε - 1) = ${opt.calculation_trace.elasticity} / (${opt.calculation_trace.elasticity} - 1) = ${fmt(opt.calculation_trace.elasticity / (opt.calculation_trace.elasticity - 1), 3)}x.` : 'Elasticity not available — needs sales_history price variation.', isMath: true },
+                                { stepTitle: '3. Unconstrained Optimal Price', stepDetail: `P* = $${fmtRaw(opt.unit_cost)} × ${isNum(opt.calculation_trace?.elasticity) ? fmt(opt.calculation_trace.elasticity / (opt.calculation_trace.elasticity - 1), 3) : '—'} = $${fmtRaw(opt.optimum_profit_price)}.`, isMath: true },
                                 { stepTitle: '4. Retail Boundary Clamp', stepDetail: `Price change constrained within ±30% retail boundaries to preserve baseline transaction conversion.`, isMath: false }
                               ],
                               businessInsight: `Shifting price to $${opt.optimum_profit_price} balances margin rate against quantity elasticity, generating an estimated +${opt.est_profit_uplift_pct}% gross profit gain.`
@@ -614,7 +612,7 @@ export default function IntelligenceEnginesView() {
                     style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', backgroundColor: '#f8fafc' }}
                   >
                     {pricingOptimizations.map((s, idx) => (
-                      <option key={idx} value={idx}>{s.sku_name} (${s.current_price})</option>
+                      <option key={idx} value={idx}>{s.sku_name} ({isNum(s.current_price) ? `$${s.current_price}` : '—'})</option>
                     ))}
                   </select>
                 </div>
@@ -641,11 +639,11 @@ export default function IntelligenceEnginesView() {
                   <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '6px' }}>Simulated Elasticity Impact:</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: '#78350f' }}>
                     <span>Projected Demand Volume:</span>
-                    <b>{simulatedPriceDelta > 0 ? `-${Math.round(simulatedPriceDelta * 1.4)}%` : `+${Math.round(Math.abs(simulatedPriceDelta) * 1.3)}%`}</b>
+                    <b>{signed(simDemandPct)}</b>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#78350f' }}>
                     <span>Estimated Profit Delta:</span>
-                    <b>{simulatedPriceDelta >= 0 ? `+${(simulatedPriceDelta * 0.45).toFixed(1)}%` : `${(simulatedPriceDelta * 0.6).toFixed(1)}%`}</b>
+                    <b>{signed(simProfitPct)}</b>
                   </div>
                 </div>
               </div>
@@ -656,18 +654,19 @@ export default function IntelligenceEnginesView() {
                     setSelectedExplanation({
                       title: `Simulated What-If: ${selectedSimOpt.sku_name}`,
                       metricName: `Simulated Price (${simulatedPriceDelta > 0 ? '+' : ''}${simulatedPriceDelta}%)`,
-                      resultValue: `$${(selectedSimOpt.current_price * (1 + simulatedPriceDelta / 100)).toFixed(2)}`,
-                      subtitle: `Elasticity Impact: ${simulatedPriceDelta > 0 ? '-' : '+'}${Math.round(Math.abs(simulatedPriceDelta) * 1.4)}% Unit Sales`,
+                      resultValue: isNum(selectedSimOpt.current_price) ? `$${(selectedSimOpt.current_price * (1 + simulatedPriceDelta / 100)).toFixed(2)}` : '—',
+                      subtitle: `Elasticity Impact: ${signed(simDemandPct)} Unit Sales`,
                       formula: '%ΔQ = -ε × %ΔP',
                       formulaExplanation: 'First-order linear elasticity approximation modeling change in transaction count given a percentage shift in retail price.',
                       inputs: [
                         { name: 'Selected Product', source: 'products table', value: selectedSimOpt.sku_name },
-                        { name: 'Baseline Price', source: 'products.selling_price', value: `$${selectedSimOpt.current_price}` },
+                        { name: 'Baseline Price', source: 'products.selling_price', value: isNum(selectedSimOpt.current_price) ? `$${selectedSimOpt.current_price}` : '—' },
+                        { name: 'Price Elasticity (ε)', source: 'sales_history regression', value: simElasticity != null ? `${simElasticity}x` : '—' },
                         { name: 'Price Delta %', source: 'slider input', value: `${simulatedPriceDelta}%` }
                       ],
                       steps: [
-                        { stepTitle: '1. New Target Price', stepDetail: `$${selectedSimOpt.current_price} × (1 + ${simulatedPriceDelta / 100}) = $${(selectedSimOpt.current_price * (1 + simulatedPriceDelta / 100)).toFixed(2)}`, isMath: true },
-                        { stepTitle: '2. Demand Contraction/Expansion', stepDetail: `Elasticity response: %ΔQ = -1.4 × ${simulatedPriceDelta}% = ${-Math.round(simulatedPriceDelta * 1.4)}%`, isMath: true }
+                        { stepTitle: '1. New Target Price', stepDetail: isNum(selectedSimOpt.current_price) ? `$${selectedSimOpt.current_price} × (1 + ${simulatedPriceDelta / 100}) = $${(selectedSimOpt.current_price * (1 + simulatedPriceDelta / 100)).toFixed(2)}` : 'Selling price not available — needs data.', isMath: true },
+                        { stepTitle: '2. Demand Contraction/Expansion', stepDetail: simElasticity != null ? `Elasticity response: %ΔQ = -${simElasticity} × ${simulatedPriceDelta}% = ${signed(simDemandPct)}` : 'Elasticity not available — needs data.', isMath: true }
                       ],
                       businessInsight: 'Simulating price changes against real elasticity curves provides pre-execution confidence before publishing catalog repricing.'
                     });
@@ -696,16 +695,14 @@ export default function IntelligenceEnginesView() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
-              {(pricingData?.demand_distribution || [
-                { name: 'Smooth', count: 8, color: '#10b981', desc: 'ADI ≤ 1.34, CV² ≤ 0.49. Steady daily sales, standard ROP math.' },
-                { name: 'Intermittent', count: 5, color: '#3b82f6', desc: 'ADI > 1.34, CV² ≤ 0.49. Infrequent sales of steady volume.' },
-                { name: 'Erratic', count: 4, color: '#f59e0b', desc: 'ADI ≤ 1.34, CV² > 0.49. Frequent sales with erratic quantities.' },
-                { name: 'Lumpy', count: 3, color: '#ef4444', desc: 'ADI > 1.34, CV² > 0.49. Spiky demand. Needs buffer or Newsvendor.' }
-              ]).map((pat, idx) => (
+              {(pricingData?.demand_distribution || []).length === 0 && (
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: '#64748b' }}>No data yet — import the required table on the Data Sources page.</div>
+              )}
+              {(pricingData?.demand_distribution || []).map((pat, idx) => (
                 <div key={idx} style={{ padding: '14px', borderRadius: '10px', backgroundColor: '#f8fafc', borderLeft: `4px solid ${pat.color}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>{pat.name}</span>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: pat.color }}>{pat.count} SKUs</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: pat.color }}>{fmtRaw(pat.count)} SKUs</span>
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px' }}>{pat.desc}</div>
                 </div>
@@ -728,9 +725,9 @@ export default function IntelligenceEnginesView() {
                   {(pricingData?.sample_demand_patterns || []).slice(0, 6).map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
                       <td style={{ padding: '8px', fontWeight: 600, color: '#0f172a' }}>{row.sku_name}</td>
-                      <td style={{ padding: '8px', color: '#64748b' }}>{row.adi} days</td>
-                      <td style={{ padding: '8px', color: '#64748b' }}>{row.cv_squared}</td>
-                      <td style={{ padding: '8px', color: '#334155', fontWeight: 600 }}>{row.avg_daily_sales} units/day</td>
+                      <td style={{ padding: '8px', color: '#64748b' }}>{fmtRaw(row.adi)} days</td>
+                      <td style={{ padding: '8px', color: '#64748b' }}>{fmtRaw(row.cv_squared)}</td>
+                      <td style={{ padding: '8px', color: '#334155', fontWeight: 600 }}>{fmtRaw(row.avg_daily_sales)} units/day</td>
                       <td style={{ padding: '8px', textAlign: 'right' }}>
                         <span style={{
                           fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px',
@@ -773,13 +770,13 @@ export default function IntelligenceEnginesView() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
-                    {policyData?.summary?.top_performing_policy?.toUpperCase() || 'MIN_MAX'}
+                    {policyData?.summary?.top_performing_policy?.toUpperCase() || '—'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>Top Lean Policy</div>
                 </div>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#2563eb' }}>
-                    +{policyData?.summary?.capital_efficiency_gain_pct || 28.4}%
+                    {isNum(policyData?.summary?.capital_efficiency_gain_pct) ? `+${policyData.summary.capital_efficiency_gain_pct}%` : '—'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#1e40af', fontWeight: 600 }}>Capital Efficiency</div>
                 </div>
@@ -810,12 +807,12 @@ export default function IntelligenceEnginesView() {
                     {(policyData?.policy_comparison || []).map((pol, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
                         <td style={{ padding: '10px 8px', fontWeight: 700, color: '#0f172a' }}>{pol.policy_label}</td>
-                        <td style={{ padding: '10px 8px', color: '#059669', fontWeight: 700 }}>{pol.avg_fill_rate_pct}%</td>
-                        <td style={{ padding: '10px 8px', color: '#334155', fontWeight: 600 }}>{pol.avg_inventory_level_units} units</td>
-                        <td style={{ padding: '10px 8px', color: '#64748b' }}>${pol.avg_holding_cost}</td>
-                        <td style={{ padding: '10px 8px', color: '#64748b' }}>${pol.avg_ordering_cost}</td>
+                        <td style={{ padding: '10px 8px', color: '#059669', fontWeight: 700 }}>{isNum(pol.avg_fill_rate_pct) ? `${pol.avg_fill_rate_pct}%` : '—'}</td>
+                        <td style={{ padding: '10px 8px', color: '#334155', fontWeight: 600 }}>{fmtRaw(pol.avg_inventory_level_units)} units</td>
+                        <td style={{ padding: '10px 8px', color: '#64748b' }}>{isNum(pol.avg_holding_cost) ? `$${pol.avg_holding_cost}` : '—'}</td>
+                        <td style={{ padding: '10px 8px', color: '#64748b' }}>{isNum(pol.avg_ordering_cost) ? `$${pol.avg_ordering_cost}` : '—'}</td>
                         <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 800, color: pol.policy === 'base_stock' || pol.policy === 'min_max' ? '#059669' : '#0f172a' }}>
-                          ${pol.avg_total_cost}
+                          {isNum(pol.avg_total_cost) ? `$${pol.avg_total_cost}` : '—'}
                         </td>
                       </tr>
                     ))}
@@ -846,7 +843,9 @@ export default function IntelligenceEnginesView() {
               </div>
 
               <div style={{ fontSize: '0.74rem', color: '#15803d', backgroundColor: '#f0fdf4', padding: '10px', borderRadius: '8px', marginTop: '10px' }}>
-                <b>Live DB Finding:</b> Min-Max policy delivers identical service level with <b>28.4% less working capital</b> locked in stock compared to static min_Q.
+                <b>Live DB Finding:</b> {policyData?.summary?.top_performing_policy && isNum(policyData?.summary?.capital_efficiency_gain_pct)
+                  ? <>{policyData.summary.top_performing_policy.toUpperCase()} policy shows <b>{policyData.summary.capital_efficiency_gain_pct}% capital efficiency gain</b> in the backtest.</>
+                  : 'Needs data — import sales history on the Data Sources page to run the policy backtest.'}
               </div>
             </div>
 
@@ -870,8 +869,8 @@ export default function IntelligenceEnginesView() {
                     {rec.rationale}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-                    <span style={{ color: '#059669', fontWeight: 700 }}>Achieved Fill Rate: {rec.achieved_fill_rate}%</span>
-                    <span style={{ color: '#2563eb', fontWeight: 700 }}>Savings: ${rec.annual_cost_savings}/yr</span>
+                    <span style={{ color: '#059669', fontWeight: 700 }}>Achieved Fill Rate: {isNum(rec.achieved_fill_rate) ? `${rec.achieved_fill_rate}%` : '—'}</span>
+                    <span style={{ color: '#2563eb', fontWeight: 700 }}>Savings: {isNum(rec.annual_cost_savings) ? `$${rec.annual_cost_savings}/yr` : '—'}</span>
                   </div>
                 </div>
               ))}
@@ -904,13 +903,13 @@ export default function IntelligenceEnginesView() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#f5f3ff', borderRadius: '8px', border: '1px solid #ddd6fe' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#7c3aed' }}>
-                    ${customerLTVData?.summary?.total_portfolio_ltv ? Math.round(customerLTVData.summary.total_portfolio_ltv).toLocaleString() : '7,310'}
+                    {isNum(customerLTVData?.summary?.total_portfolio_ltv) ? `$${fmtInt(customerLTVData.summary.total_portfolio_ltv)}` : '—'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#6d28d9', fontWeight: 600 }}>Total Customer LTV</div>
                 </div>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
-                    {customerLTVData?.summary?.total_customers_analyzed || 16}
+                    {fmtRaw(customerLTVData?.summary?.total_customers_analyzed)}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>Active Customer Accounts</div>
                 </div>
@@ -925,14 +924,14 @@ export default function IntelligenceEnginesView() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>{seg.segment_label}</span>
                   <span style={{ fontSize: '0.72rem', fontWeight: 700, color: seg.color, backgroundColor: `${seg.color}15`, padding: '2px 8px', borderRadius: '999px' }}>
-                    {seg.revenue_share_pct}% of Revenue
+                    {fmtRaw(seg.revenue_share_pct)}% of Revenue
                   </span>
                 </div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '6px 0' }}>
-                  ${Math.round(seg.total_spend).toLocaleString()}
+                  {isNum(seg.total_spend) ? `$${fmtInt(seg.total_spend)}` : '—'}
                 </div>
                 <div style={{ fontSize: '0.74rem', color: '#64748b', marginBottom: '10px' }}>
-                  {seg.customer_count} Customers ({seg.customer_share_pct}%) • Avg Spend: <b>${seg.avg_spend_per_customer}</b>
+                  {fmtRaw(seg.customer_count)} Customers ({fmtRaw(seg.customer_share_pct)}%) • Avg Spend: <b>{isNum(seg.avg_spend_per_customer) ? `$${seg.avg_spend_per_customer}` : '—'}</b>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#334155', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px' }}>
                   {seg.recommended_action}
@@ -992,16 +991,16 @@ export default function IntelligenceEnginesView() {
                 <tbody>
                   {(customerLTVData?.sample_customers || [])
                   .filter(c => customerSegmentFilter === 'ALL' || c.ltv_segment === customerSegmentFilter)
-                  .filter(c => !customerSearch || (c.name || c.customer_id).toLowerCase().includes(customerSearch.toLowerCase()))
+                  .filter(c => !customerSearch || String(c.name || c.customer_id || '').toLowerCase().includes(customerSearch.toLowerCase()))
                   .map((c, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
                       <td style={{ padding: '9px 8px', fontWeight: 700, color: '#2563eb' }}>
                         {c.name || c.customer_id}
                         {c.name && <span style={{ display: 'block', fontSize: '0.68rem', color: '#64748b', fontWeight: 400 }}>{c.customer_id}</span>}
                       </td>
-                      <td style={{ padding: '9px 8px', color: '#0f172a' }}>{c.recency_days} days ago</td>
-                      <td style={{ padding: '9px 8px', color: '#0f172a' }}>{c.frequency_orders} orders</td>
-                      <td style={{ padding: '9px 8px', fontWeight: 700, color: '#0f172a' }}>${c.monetary_spend}</td>
+                      <td style={{ padding: '9px 8px', color: '#0f172a' }}>{fmtRaw(c.recency_days)} days ago</td>
+                      <td style={{ padding: '9px 8px', color: '#0f172a' }}>{fmtRaw(c.frequency_orders)} orders</td>
+                      <td style={{ padding: '9px 8px', fontWeight: 700, color: '#0f172a' }}>{isNum(c.monetary_spend) ? `$${c.monetary_spend}` : '—'}</td>
                       <td style={{ padding: '9px 8px' }}>
                         <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9' }}>
                           R:{c.rfm_recency_score} F:{c.rfm_frequency_score} M:{c.rfm_monetary_score}
@@ -1089,13 +1088,13 @@ export default function IntelligenceEnginesView() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#fff1f2', borderRadius: '8px', border: '1px solid #fecdd3' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#e11d48' }}>
-                    {marketBasketData?.summary?.avg_association_lift || 5.25}x
+                    {isNum(marketBasketData?.summary?.avg_association_lift) ? `${marketBasketData.summary.avg_association_lift}x` : '—'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#9f1239', fontWeight: 600 }}>Avg Bundle Lift</div>
                 </div>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
-                    {marketBasketData?.summary?.total_rules_discovered || 18}
+                    {fmtRaw(marketBasketData?.summary?.total_rules_discovered)}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>Discovered Rules</div>
                 </div>
@@ -1146,8 +1145,8 @@ export default function IntelligenceEnginesView() {
                               { name: 'Confidence % (Conditional)', source: 'orders co-occurrence', value: `${r.confidence_pct}%` }
                             ],
                             steps: [
-                              { stepTitle: '1. Basket Aggregation', stepDetail: 'Grouped 60 customer orders into discrete transactional itemsets.', isMath: false },
-                              { stepTitle: '2. Support Calculation', stepDetail: `Supp(A ∩ B) = Count(Baskets containing both) / 60 = ${r.support_pct}%.`, isMath: true },
+                              { stepTitle: '1. Basket Aggregation', stepDetail: `Grouped ${fmtInt(marketBasketData?.database_info?.baskets_analyzed)} customer orders into discrete transactional itemsets.`, isMath: false },
+                              { stepTitle: '2. Support Calculation', stepDetail: `Supp(A ∩ B) = Count(Baskets containing both) / ${fmtInt(marketBasketData?.database_info?.baskets_analyzed)} = ${r.support_pct}%.`, isMath: true },
                               { stepTitle: '3. Confidence Ratio', stepDetail: `Conf(A → B) = Supp(A ∩ B) / Supp(A) = ${r.confidence_pct}%.`, isMath: true },
                               { stepTitle: '4. Lift Ratio', stepDetail: `Lift = Conf(A → B) / Supp(B) = ${r.lift}x multiplier.`, isMath: true }
                             ],
@@ -1203,13 +1202,13 @@ export default function IntelligenceEnginesView() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0284c7' }}>
-                    {tradeAreaData?.stores?.length || 4} Stores
+                    {(tradeAreaData?.stores || []).length} Stores
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#0369a1', fontWeight: 600 }}>Active Regional Hubs</div>
                 </div>
                 <div style={{ textAlign: 'right', padding: '8px 14px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
-                    {tradeAreaData?.summary?.highest_attractiveness_store || 'Dubai Central'}
+                    {tradeAreaData?.summary?.highest_attractiveness_store || '—'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#065f46', fontWeight: 600 }}>Highest Gravitational Draw</div>
                 </div>
@@ -1217,7 +1216,54 @@ export default function IntelligenceEnginesView() {
             </div>
           </div>
 
+          {tradeAreaData?.status === 'NEEDS_DATA' && (
+            <div className="ui-card" style={{ padding: '20px', borderLeft: '5px solid #f59e0b', backgroundColor: '#fffbeb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <AlertCircle size={18} color="#d97706" />
+                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#92400e' }}>Needs data — Huff model not calculated</span>
+              </div>
+              {tradeAreaData?.message && (
+                <p style={{ fontSize: '0.8rem', color: '#78350f', margin: '0 0 10px 0' }}>{tradeAreaData.message}</p>
+              )}
+              {(tradeAreaData?.missing_data || []).length > 0 && (
+                <ul style={{ fontSize: '0.78rem', color: '#78350f', margin: 0, paddingLeft: '18px' }}>
+                  {tradeAreaData.missing_data.map((m, i) => <li key={i} style={{ marginBottom: '4px' }}>{m}</li>)}
+                </ul>
+              )}
+              {(tradeAreaData?.stores || []).length > 0 && (
+                <div style={{ overflowX: 'auto', marginTop: '14px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', backgroundColor: '#ffffff' }}>
+                    <thead>
+                      <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
+                        <th style={{ padding: '8px' }}>Store / Warehouse</th>
+                        <th style={{ padding: '8px' }}>Location</th>
+                        <th style={{ padding: '8px' }}>Capacity</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Sales Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tradeAreaData.stores.map((st, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
+                          <td style={{ padding: '8px', fontWeight: 700, color: '#0f172a' }}>{fmtRaw(st.store_name)} <span style={{ color: '#64748b', fontWeight: 400 }}>{st.warehouse_code}</span></td>
+                          <td style={{ padding: '8px', color: '#64748b' }}>{fmtRaw(st.location)}</td>
+                          <td style={{ padding: '8px', color: '#334155' }}>{isNum(st.size_sqft) ? `${fmtInt(st.size_sqft)} sqft` : '—'}</td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{isNum(st.revenue_usd) ? `$${fmtInt(st.revenue_usd)}` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Store Gravity Cards */}
+          {tradeAreaData?.status !== 'NEEDS_DATA' && (tradeAreaData?.stores || []).length === 0 && (
+            <div className="ui-card" style={{ padding: '20px', fontSize: '0.8rem', color: '#64748b' }}>
+              No data yet — import the required table on the Data Sources page.
+            </div>
+          )}
+          {tradeAreaData?.status !== 'NEEDS_DATA' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
             {(tradeAreaData?.stores || []).map((st, idx) => (
               <div key={idx} className="ui-card" style={{ padding: '16px', borderTop: `4px solid ${st.color || '#0284c7'}` }}>
@@ -1235,29 +1281,29 @@ export default function IntelligenceEnginesView() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '4px' }}>
                   <span style={{ color: '#64748b' }}>Capacity:</span>
-                  <b>{st.size_sqft.toLocaleString()} sqft</b>
+                  <b>{isNum(st.size_sqft) ? `${fmtInt(st.size_sqft)} sqft` : '—'}</b>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '10px' }}>
                   <span style={{ color: '#64748b' }}>Attractiveness:</span>
-                  <b style={{ color: '#0284c7' }}>{st.composite_attractiveness} / 5.0</b>
+                  <b style={{ color: '#0284c7' }}>{isNum(st.composite_attractiveness) ? `${st.composite_attractiveness} / 5.0` : '—'}</b>
                 </div>
                 <button
                   onClick={() => setSelectedExplanation({
                     title: `Huff Gravity Model: ${st.store_name}`,
                     metricName: 'Composite Attractiveness Index',
-                    resultValue: `${st.composite_attractiveness} / 5.0`,
+                    resultValue: isNum(st.composite_attractiveness) ? `${st.composite_attractiveness} / 5.0` : '—',
                     subtitle: `Warehouse: ${st.warehouse_code} • Location: ${st.location}`,
                     formula: 'P_ij = ( S_j / D_ij^λ ) / Σ_k ( S_k / D_ik^λ )',
                     formulaExplanation: 'The probability that a customer at origin i chooses store j is proportional to store attractiveness S_j divided by travel distance D_ij squared (λ = 2).',
                     inputs: [
-                      { name: 'Floor Capacity (Size)', source: 'warehouses.capacity_sqft', value: `${st.size_sqft.toLocaleString()} sqft` },
-                      { name: 'Parking Capacity', source: 'warehouses derived', value: `${st.parking_spaces} spots` },
-                      { name: 'Highway Draw', source: 'store location', value: `${st.highways} arteries` },
-                      { name: 'Accessibility Score', source: 'store profile', value: `${st.accessibility_score}/100` }
+                      { name: 'Floor Capacity (Size)', source: 'warehouses.capacity_sqft', value: isNum(st.size_sqft) ? `${fmtInt(st.size_sqft)} sqft` : '—' },
+                      { name: 'Parking Capacity', source: 'warehouses derived', value: isNum(st.parking_spaces) ? `${st.parking_spaces} spots` : '—' },
+                      { name: 'Highway Draw', source: 'store location', value: isNum(st.highways) ? `${st.highways} arteries` : '—' },
+                      { name: 'Accessibility Score', source: 'store profile', value: isNum(st.accessibility_score) ? `${st.accessibility_score}/100` : '—' }
                     ],
                     steps: [
                       { stepTitle: '1. Multi-Factor Weighting', stepDetail: 'Size (30%) + Parking (25%) + Traffic (20%) + Access (15%) + Design (10%).', isMath: false },
-                      { stepTitle: '2. Normalization', stepDetail: `Calculated weighted score = ${st.composite_attractiveness} on a 1.0 - 5.0 scale.`, isMath: true },
+                      { stepTitle: '2. Normalization', stepDetail: `Calculated weighted score = ${fmtRaw(st.composite_attractiveness)} on a 1.0 - 5.0 scale.`, isMath: true },
                       { stepTitle: '3. Distance Decay Simulation', stepDetail: 'Quadratic penalty (1/d²) applied against travel times from surrounding consumer zones.', isMath: false }
                     ],
                     businessInsight: 'High composite attractiveness overcomes moderate travel friction, cementing this facility as a prime regional fulfillment anchor.'
@@ -1279,6 +1325,7 @@ export default function IntelligenceEnginesView() {
               </div>
             ))}
           </div>
+          )}
 
         </div>
       )}
@@ -1309,20 +1356,20 @@ export default function IntelligenceEnginesView() {
                   onClick={() => setSelectedExplanation({
                     title: `Demand Forecasting: ${demandData?.sku || 'Catalog SKUs'}`,
                     metricName: '30-Day Forward Demand Projection',
-                    resultValue: `${demandData?.total_forecasted_demand || 119} units (95% CI)`,
-                    subtitle: `Model: ${demandData?.model_name || 'Holt-Winters ML'} • MAE: ${demandData?.mae || 1.8} • RMSE: ${demandData?.rmse || 2.5}`,
+                    resultValue: isNum(demandData?.total_forecasted_demand) ? `${demandData.total_forecasted_demand} units (95% CI)` : '—',
+                    subtitle: `Model: ${fmtRaw(demandData?.model_name)} • MAE: ${fmtRaw(demandData?.mae)} • RMSE: ${fmtRaw(demandData?.rmse)}`,
                     formula: 'ŷ_(t+h) = [ ℓ_t + h·b_t ] · s_(t+h-m)',
                     formulaExplanation: 'Holt-Winters triple exponential smoothing with level (ℓ_t), trend (b_t), and seasonal (s_t) update equations, coupled with Croston intermittent interval adjustments.',
                     inputs: [
-                      { name: 'Target Product', source: 'products table', value: demandData?.product_name || 'Eco-Friendly Bamboo Cutlery Set' },
-                      { name: 'Daily Transactions Used', source: 'sales_history table', value: `${demandData?.calculation_trace?.historical_days_evaluated || 90} days` },
-                      { name: 'Mean Daily Velocity', source: 'sales_history quantity_sold', value: `${demandData?.calculation_trace?.daily_mean_demand || 4.0} units/day` },
+                      { name: 'Target Product', source: 'products table', value: fmtRaw(demandData?.product_name) },
+                      { name: 'Daily Transactions Used', source: 'sales_history table', value: `${fmtRaw(demandData?.calculation_trace?.historical_days_evaluated)} days` },
+                      { name: 'Mean Daily Velocity', source: 'sales_history quantity_sold', value: `${fmtRaw(demandData?.calculation_trace?.daily_mean_demand)} units/day` },
                       { name: 'Confidence Interval', source: 'calculated bounds', value: '95% Confidence (±1.96 × RMSE)' }
                     ],
                     steps: [
                       { stepTitle: '1. Time Series Aggregation', stepDetail: 'Extracted daily sales history from connected database.', isMath: false },
                       { stepTitle: '2. Exponential Smoothing', stepDetail: 'Applied smoothing parameters (alpha=0.3, beta=0.1, gamma=0.2) to update level and trend.', isMath: true },
-                      { stepTitle: '3. 30-Day Summation', stepDetail: `Forecasted daily increments sum to ${demandData?.total_forecasted_demand || 119} units over the horizon.`, isMath: true }
+                      { stepTitle: '3. 30-Day Summation', stepDetail: `Forecasted daily increments sum to ${fmtRaw(demandData?.total_forecasted_demand)} units over the horizon.`, isMath: true }
                     ],
                     businessInsight: 'Demand trajectory provides forward operational baseline, triggering automated replenishment POs before stock breaches safety levels.'
                   })}
@@ -1349,19 +1396,19 @@ export default function IntelligenceEnginesView() {
                   onClick={() => setSelectedExplanation({
                     title: 'Procurement Wilson EOQ & Batch Rebate',
                     metricName: 'Potential Procurement Savings',
-                    resultValue: `$${procurementData?.potential_savings || 558.76}`,
+                    resultValue: isNum(procurementData?.potential_savings) ? `$${procurementData.potential_savings}` : '—',
                     subtitle: 'Derived from Wilson Economic Order Quantity balancing setup vs holding cost',
                     formula: 'EOQ = √[ ( 2 × Demand × Setup_Cost ) / Holding_Cost ]',
                     formulaExplanation: 'The classical Wilson Economic Order Quantity formula minimizes total inventory cost: Carrying Cost (H = 15% of unit cost) + Ordering Cost (S = $50 fixed fee).',
                     inputs: [
                       { name: 'Fixed PO Setup Cost (S)', source: 'procurement parameter', value: '$50.00 / order' },
                       { name: 'Carrying Rate (H)', source: 'products.unit_cost × 15%', value: '15% annual' },
-                      { name: 'Identified PO Savings', source: 'consolidated volume rebate', value: `$${procurementData?.potential_savings || 558.76}` }
+                      { name: 'Identified PO Savings', source: 'cost(current order qty) − cost(EOQ)', value: isNum(procurementData?.potential_savings) ? `$${procurementData.potential_savings}` : '—' }
                     ],
                     steps: [
-                      { stepTitle: '1. Annual Demand Modeling', stepDetail: 'D = Reorder_Point × 12 months estimated per SKU.', isMath: false },
+                      { stepTitle: '1. Annual Demand Modeling', stepDetail: 'D = units sold in sales_history × 365 / days covered, per SKU.', isMath: false },
                       { stepTitle: '2. Wilson Square-Root Formula', stepDetail: 'EOQ = sqrt((2 * D * 50) / H) calculated for each product.', isMath: true },
-                      { stepTitle: '3. Volume Consolidation Rebate', stepDetail: 'Consolidated vendor ordering unlocks an estimated 8% bulk purchasing negotiation rebate.', isMath: false }
+                      { stepTitle: '3. Savings vs Current Order Size', stepDetail: 'Savings = yearly cost at current inventory.reorder_quantity − yearly cost at EOQ, where cost(Q) = D/Q × S + Q/2 × H. SKUs without a current order quantity are not counted.', isMath: true }
                     ],
                     businessInsight: 'Consolidating fragmented small orders into Wilson EOQ batches eliminates redundant delivery fees and captures bulk price discounts.'
                   })}
@@ -1403,7 +1450,7 @@ export default function IntelligenceEnginesView() {
               ) : (
                 <div style={{ height: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '0.82rem' }}>
                   <TrendingUp size={24} color="#94a3b8" style={{ marginBottom: '8px' }} />
-                  <span>Loading live demand forecast points from database...</span>
+                  <span>{isLoading ? 'Loading live demand forecast points from database...' : 'No data yet — import the required table on the Data Sources page.'}</span>
                 </div>
               )
             )}
@@ -1429,8 +1476,8 @@ export default function IntelligenceEnginesView() {
                         <td style={{ padding: '8px 0', fontWeight: 700, color: '#2563eb' }}>{r.sku}</td>
                         <td style={{ padding: '8px 0', color: '#0f172a', fontWeight: 500 }}>{r.product_name}</td>
                         <td style={{ padding: '8px 0', color: '#64748b' }}>{r.warehouse_name}</td>
-                        <td style={{ padding: '8px 0', color: '#0f172a', fontWeight: 700 }}>{r.current_stock} units</td>
-                        <td style={{ padding: '8px 0', color: '#334155', fontWeight: 600 }}>{r.days_of_inventory} days</td>
+                        <td style={{ padding: '8px 0', color: '#0f172a', fontWeight: 700 }}>{fmtRaw(r.current_stock)} units</td>
+                        <td style={{ padding: '8px 0', color: '#334155', fontWeight: 600 }}>{fmtRaw(r.days_of_inventory)} days</td>
                         <td style={{ padding: '8px 0' }}>
                           <span style={{
                             fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px',
@@ -1445,20 +1492,20 @@ export default function IntelligenceEnginesView() {
                             onClick={() => setSelectedExplanation({
                               title: `Inventory Risk: ${r.product_name}`,
                               metricName: 'Days of Inventory (DOI) & Buffer Risk',
-                              resultValue: `${r.days_of_inventory} Days (${r.stockout_risk_level})`,
+                              resultValue: `${fmtRaw(r.days_of_inventory)} Days (${fmtRaw(r.stockout_risk_level)})`,
                               subtitle: `Warehouse: ${r.warehouse_name} • Current Stock: ${r.current_stock} units`,
                               formula: 'DOI = Current_Stock / Average_Daily_Demand',
                               formulaExplanation: 'Calculates the remaining duration of inventory before stockout at current transaction consumption run rates.',
                               inputs: [
-                                { name: 'Available Physical Stock', source: 'inventory.current_stock', value: `${r.current_stock} units` },
-                                { name: 'Avg Daily Run Rate', source: 'sales_history average', value: `${r.avg_daily_demand} units/day` },
-                                { name: 'Safety Stock Floor', source: 'products.safety_stock_min', value: `${r.safety_stock} units` },
-                                { name: 'Vendor Delivery Lead Time', source: 'products.lead_time_days', value: `${r.lead_time_days} days` }
+                                { name: 'Available Physical Stock', source: 'inventory.current_stock', value: `${fmtRaw(r.current_stock)} units` },
+                                { name: 'Avg Daily Run Rate', source: 'sales_history average', value: `${fmtRaw(r.avg_daily_demand)} units/day` },
+                                { name: 'Safety Stock Floor', source: 'products.safety_stock_min', value: `${fmtRaw(r.safety_stock)} units` },
+                                { name: 'Vendor Delivery Lead Time', source: 'products.lead_time_days', value: `${fmtRaw(r.lead_time_days)} days` }
                               ],
                               steps: [
-                                { stepTitle: '1. Run Rate Calculation', stepDetail: `Average daily demand calculated from sales_history: ${r.avg_daily_demand} units/day.`, isMath: false },
-                                { stepTitle: '2. DOI Division', stepDetail: `DOI = ${r.current_stock} / ${r.avg_daily_demand} = ${r.days_of_inventory} days.`, isMath: true },
-                                { stepTitle: '3. Lead Time Threshold Comparison', stepDetail: `Compared DOI (${r.days_of_inventory}d) against lead time (${r.lead_time_days}d). If DOI < Lead Time, stock will deplete before reorder arrives.`, isMath: false }
+                                { stepTitle: '1. Run Rate Calculation', stepDetail: `Average daily demand calculated from sales_history: ${fmtRaw(r.avg_daily_demand)} units/day.`, isMath: false },
+                                { stepTitle: '2. DOI Division', stepDetail: `DOI = ${fmtRaw(r.current_stock)} / ${fmtRaw(r.avg_daily_demand)} = ${fmtRaw(r.days_of_inventory)} days.`, isMath: true },
+                                { stepTitle: '3. Lead Time Threshold Comparison', stepDetail: `Compared DOI (${fmtRaw(r.days_of_inventory)}d) against lead time (${fmtRaw(r.lead_time_days)}d). If DOI < Lead Time, stock will deplete before reorder arrives.`, isMath: false }
                               ],
                               businessInsight: r.reasoning
                             })}
@@ -1506,30 +1553,30 @@ export default function IntelligenceEnginesView() {
                       <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
                         <td style={{ padding: '8px 0', fontWeight: 700, color: '#2563eb' }}>{po.sku}</td>
                         <td style={{ padding: '8px 0', color: '#0f172a', fontWeight: 500 }}>{po.product_name}</td>
-                        <td style={{ padding: '8px 0', color: '#64748b' }}>{po.current_stock} units</td>
-                        <td style={{ padding: '8px 0', fontWeight: 700, color: '#059669' }}>{po.recommended_po_qty} units</td>
-                        <td style={{ padding: '8px 0', color: '#475569' }}>{po.supplier_name}</td>
-                        <td style={{ padding: '8px 0', fontWeight: 700, color: '#0f172a' }}>${po.estimated_order_cost}</td>
+                        <td style={{ padding: '8px 0', color: '#64748b' }}>{fmtRaw(po.current_stock)} units</td>
+                        <td style={{ padding: '8px 0', fontWeight: 700, color: '#059669' }}>{fmtRaw(po.recommended_po_qty)} units</td>
+                        <td style={{ padding: '8px 0', color: '#475569' }}>{fmtRaw(po.supplier_name)}</td>
+                        <td style={{ padding: '8px 0', fontWeight: 700, color: '#0f172a' }}>{isNum(po.estimated_order_cost) ? `$${po.estimated_order_cost}` : '—'}</td>
                         <td style={{ padding: '8px 0', textAlign: 'right' }}>
                           <button
                             onClick={() => setSelectedExplanation({
                               title: `Wilson EOQ: ${po.product_name}`,
                               metricName: 'Recommended Order Batch (EOQ)',
-                              resultValue: `${po.recommended_po_qty} units ($${po.estimated_order_cost})`,
-                              subtitle: `Assigned Supplier: ${po.supplier_name} (OTIF: ${po.supplier_otif}%)`,
+                              resultValue: `${fmtRaw(po.recommended_po_qty)} units ($${fmtRaw(po.estimated_order_cost)})`,
+                              subtitle: `Assigned Supplier: ${fmtRaw(po.supplier_name)} (OTIF: ${isNum(po.supplier_otif) ? `${po.supplier_otif}%` : '—'})`,
                               formula: 'EOQ = √[ ( 2 × Demand × S ) / H ]',
                               formulaExplanation: 'Determines the exact batch size where cumulative annual order setup fees match cumulative annual storage holding costs.',
                               inputs: [
-                                { name: 'Annual Projected Demand (D)', source: 'products.reorder_point × 12', value: `${po.calculation_trace?.annual_demand_D || 720} units/yr` },
-                                { name: 'Fixed Order Setup Fee (S)', source: 'procurement constant', value: '$50.00 / order' },
-                                { name: 'Holding Cost / Unit (H)', source: 'products.unit_cost × 15%', value: `$${po.calculation_trace?.holding_cost_H || 1.00} / unit/yr` }
+                                { name: 'Annual Projected Demand (D)', source: po.calculation_trace?.annual_demand_source || 'sales_history units sold × 365 / days', value: `${fmtRaw(po.calculation_trace?.annual_demand_D)} units/yr` },
+                                { name: 'Fixed Order Setup Fee (S)', source: 'procurement constant', value: isNum(po.calculation_trace?.order_setup_cost_S) ? `$${po.calculation_trace.order_setup_cost_S} / order` : '—' },
+                                { name: 'Holding Cost / Unit (H)', source: 'products.unit_cost × 15%', value: isNum(po.calculation_trace?.holding_cost_H) ? `$${po.calculation_trace.holding_cost_H} / unit/yr` : '—' }
                               ],
                               steps: [
-                                { stepTitle: '1. Parameter Extraction', stepDetail: 'Pulled unit cost and reorder point from products table in connected database.', isMath: false },
-                                { stepTitle: '2. Wilson Equation Substitution', stepDetail: po.calculation_trace?.formula_substitution || `sqrt((2 * 720 * 50) / 1.0) = ${po.recommended_po_qty} units`, isMath: true },
-                                { stepTitle: '3. Volume Consolidation Rebate', stepDetail: po.calculation_trace?.savings_formula || `Volume rebate produces $${po.potential_savings} savings`, isMath: true }
+                                { stepTitle: '1. Parameter Extraction', stepDetail: 'Pulled unit cost and reorder point from products table and units sold from sales_history in connected database.', isMath: false },
+                                { stepTitle: '2. Wilson Equation Substitution', stepDetail: po.calculation_trace?.formula_substitution || '—', isMath: true },
+                                { stepTitle: '3. Savings vs Current Order Size', stepDetail: po.calculation_trace?.savings_formula || 'Savings not computed — needs data.', isMath: true }
                               ],
-                              businessInsight: `Ordering in batches of ${po.recommended_po_qty} units satisfies demand while maximizing volume discounts and minimizing freight expenses.`
+                              businessInsight: `Ordering in batches of ${fmtRaw(po.recommended_po_qty)} units balances yearly ordering cost against holding cost.`
                             })}
                             style={{
                               display: 'inline-flex',
@@ -1575,10 +1622,10 @@ export default function IntelligenceEnginesView() {
                       <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
                         <td style={{ padding: '8px 0', fontWeight: 700, color: '#2563eb' }}>{asst.sku}</td>
                         <td style={{ padding: '8px 0', color: '#0f172a', fontWeight: 500 }}>{asst.product_name}</td>
-                        <td style={{ padding: '8px 0', color: '#64748b' }}>{asst.allocated_space_sqm} m²</td>
-                        <td style={{ padding: '8px 0', color: '#059669', fontWeight: 700 }}>{asst.sell_through_pct}%</td>
+                        <td style={{ padding: '8px 0', color: '#64748b' }}>{fmtRaw(asst.allocated_space_sqm)} m²</td>
+                        <td style={{ padding: '8px 0', color: '#059669', fontWeight: 700 }}>{isNum(asst.sell_through_pct) ? `${asst.sell_through_pct}%` : '—'}</td>
                         <td style={{ padding: '8px 0', fontWeight: 800, color: asst.gmroi >= 2.0 ? '#059669' : '#d97706' }}>
-                          {asst.gmroi}x
+                          {isNum(asst.gmroi) ? `${asst.gmroi}x` : '—'}
                         </td>
                         <td style={{ padding: '8px 0' }}>
                           <span style={{
@@ -1594,19 +1641,19 @@ export default function IntelligenceEnginesView() {
                             onClick={() => setSelectedExplanation({
                               title: `Assortment GMROI: ${asst.product_name}`,
                               metricName: 'Gross Margin Return on Investment',
-                              resultValue: `${asst.gmroi}x GMROI (Sell-Through: ${asst.sell_through_pct}%)`,
-                              subtitle: `Allocated Floor Area: ${asst.allocated_space_sqm} m² • Revenue/m²: $${asst.revenue_per_sqm}`,
+                              resultValue: `${fmtRaw(asst.gmroi)}x GMROI (Sell-Through: ${fmtRaw(asst.sell_through_pct)}%)`,
+                              subtitle: `Allocated Floor Area: ${fmtRaw(asst.allocated_space_sqm)} m² • Revenue/m²: $${fmtRaw(asst.revenue_per_sqm)}`,
                               formula: 'GMROI = Gross_Margin_$ / Average_Display_Inventory_$',
                               formulaExplanation: 'Measures profitability generated per dollar of inventory displayed on store shelving.',
                               inputs: [
-                                { name: '90-Day Units Sold', source: 'sales_history.quantity_sold', value: `${asst.units_sold_90d} units` },
-                                { name: 'Gross Margin / Unit', source: 'products.selling_price - unit_cost', value: `$${((asst.revenue_90d / max(1, asst.units_sold_90d)) * 0.4).toFixed(2)}` },
-                                { name: 'Display Shelf Capacity', source: 'retail_spaces.display_units', value: `${asst.display_units} units` }
+                                { name: '90-Day Units Sold', source: 'sales_history.quantity_sold', value: `${fmtRaw(asst.units_sold_90d)} units` },
+                                { name: 'Gross Margin / Unit', source: 'products.selling_price - unit_cost', value: isNum(asst.gross_margin_per_unit) ? `$${fmt(asst.gross_margin_per_unit, 2)}` : '—' },
+                                { name: 'Display Shelf Capacity', source: 'retail_spaces.display_units', value: `${fmtRaw(asst.display_units)} units` }
                               ],
                               steps: [
-                                { stepTitle: '1. Revenue Productivity', stepDetail: `$${asst.revenue_90d} revenue / ${asst.allocated_space_sqm} m² = $${asst.revenue_per_sqm}/m²`, isMath: true },
-                                { stepTitle: '2. Sell-Through Velocity', stepDetail: `Units Sold (${asst.units_sold_90d}) / Total Inventory (${asst.units_sold_90d + asst.display_units}) = ${asst.sell_through_pct}%`, isMath: true },
-                                { stepTitle: '3. Return on Investment', stepDetail: `Gross Profit / Average Inventory Investment = ${asst.gmroi}x`, isMath: true }
+                                { stepTitle: '1. Revenue Productivity', stepDetail: `$${fmtRaw(asst.revenue_90d)} revenue / ${fmtRaw(asst.allocated_space_sqm)} m² = $${fmtRaw(asst.revenue_per_sqm)}/m²`, isMath: true },
+                                { stepTitle: '2. Sell-Through Velocity', stepDetail: `Units Sold (${fmtRaw(asst.units_sold_90d)}) / Total Inventory (${isNum(asst.units_sold_90d) && isNum(asst.display_units) ? Number(asst.units_sold_90d) + Number(asst.display_units) : '—'}) = ${fmtRaw(asst.sell_through_pct)}%`, isMath: true },
+                                { stepTitle: '3. Return on Investment', stepDetail: `Gross Profit / Average Inventory Investment = ${fmtRaw(asst.gmroi)}x`, isMath: true }
                               ],
                               businessInsight: `${asst.product_name} is performing as a ${asst.classification}, justifying its allocated shelf footprint.`
                             })}
@@ -1689,6 +1736,3 @@ export default function IntelligenceEnginesView() {
   );
 }
 
-function max(a, b) {
-  return a > b ? a : b;
-}

@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Iterator
 import time
 import datetime
 from decimal import Decimal
@@ -15,6 +15,13 @@ def _serialize_value(val: Any) -> Any:
         return str(val)
     return val
 
+def _quote_table(table_name: str) -> str:
+    """Quote a table name (optionally schema-qualified) as a SQL identifier."""
+    parts = [p for p in (table_name or "").strip().split(".") if p]
+    if not parts:
+        raise ValueError("No source table selected")
+    return ".".join('"' + p.replace('"', '""') + '"' for p in parts)
+
 class DirectDBConnector:
     """
     Direct Database Connector (PostgreSQL, SQLite, MySQL).
@@ -28,6 +35,7 @@ class DirectDBConnector:
         self.username = (username or "").strip()
         self.password = (password or "").strip()
         self.ssl_mode = ssl_mode
+        self.last_error: Optional[str] = None
 
     def _get_connection_url(self) -> str:
         # If no host is provided, default to the internal application database
@@ -84,7 +92,7 @@ class DirectDBConnector:
             with engine.connect() as conn:
                 for t_name in table_names:
                     try:
-                        count_res = conn.execute(text(f'SELECT COUNT(*) FROM "{t_name}"')).scalar()
+                        count_res = conn.execute(text(f'SELECT COUNT(*) FROM {_quote_table(t_name)}')).scalar()
                     except Exception:
                         count_res = 0
                     columns = [c['name'] for c in inspector.get_columns(t_name)]
@@ -97,16 +105,16 @@ class DirectDBConnector:
             return discovered
         except Exception as e:
             print(f"DirectDBConnector discovery error: {e}")
+            self.last_error = str(e)
             return []
 
     def preview_data(self, table_key: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Preview live records from connected database table"""
         url = self._get_connection_url()
         try:
-            clean_name = table_key.replace("public.", "").replace("db_", "").strip()
             engine = create_engine(url)
             with engine.connect() as conn:
-                res = conn.execute(text(f'SELECT * FROM "{clean_name}" LIMIT :limit'), {"limit": limit})
+                res = conn.execute(text(f'SELECT * FROM {_quote_table(table_key)} LIMIT :limit'), {"limit": limit})
                 rows = []
                 for row in res:
                     row_dict = {k: _serialize_value(v) for k, v in dict(row._mapping).items()}
@@ -117,19 +125,44 @@ class DirectDBConnector:
             return []
 
     def fetch_records(self, table_name: str, limit: int = 10000, offset: int = 0) -> List[Dict[str, Any]]:
-        """Fetch records from source table with serialization"""
+        """Fetch records from the source table. Raises on connection/query errors so callers can report them."""
         url = self._get_connection_url()
+        connect_args = {"connect_timeout": 10} if "postgresql" in url else {}
+        engine = create_engine(url, connect_args=connect_args)
         try:
-            clean_name = table_name.replace("public.", "").replace("db_", "").strip()
-            engine = create_engine(url)
             with engine.connect() as conn:
-                res = conn.execute(text(f'SELECT * FROM "{clean_name}" LIMIT :limit OFFSET :offset'), {"limit": limit, "offset": offset})
-                rows = []
-                for row in res:
-                    row_dict = {k: _serialize_value(v) for k, v in dict(row._mapping).items()}
-                    rows.append(row_dict)
-                return rows
-        except Exception as e:
-            print(f"DirectDBConnector fetch_records error: {e}")
-            return []
+                res = conn.execute(
+                    text(f'SELECT * FROM {_quote_table(table_name)} LIMIT :limit OFFSET :offset'),
+                    {"limit": limit, "offset": offset}
+                )
+                return [{k: _serialize_value(v) for k, v in dict(row._mapping).items()} for row in res]
+        finally:
+            engine.dispose()
 
+    def count_rows(self, table_name: str) -> int:
+        url = self._get_connection_url()
+        connect_args = {"connect_timeout": 10} if "postgresql" in url else {}
+        engine = create_engine(url, connect_args=connect_args)
+        try:
+            with engine.connect() as conn:
+                return int(conn.execute(text(f"SELECT COUNT(*) FROM {_quote_table(table_name)}")).scalar() or 0)
+        finally:
+            engine.dispose()
+
+    def stream_records(self, table_name: str, batch_size: int = 5000) -> Iterator[List[Dict[str, Any]]]:
+        """Yield the whole table in batches from one server-side cursor, so memory stays flat
+        and rows are neither skipped nor repeated (unlike LIMIT/OFFSET paging)."""
+        url = self._get_connection_url()
+        connect_args = {"connect_timeout": 10} if "postgresql" in url else {}
+        engine = create_engine(url, connect_args=connect_args)
+        try:
+            with engine.connect() as conn:
+                res = conn.execution_options(stream_results=True, yield_per=batch_size).execute(
+                    text(f"SELECT * FROM {_quote_table(table_name)}"))
+                while True:
+                    rows = res.fetchmany(batch_size)
+                    if not rows:
+                        break
+                    yield [{k: _serialize_value(v) for k, v in dict(r._mapping).items()} for r in rows]
+        finally:
+            engine.dispose()

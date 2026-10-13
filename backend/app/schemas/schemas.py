@@ -88,18 +88,21 @@ class ForecastPoint(BaseModel):
 
 class ForecastResponse(BaseModel):
     product_id: int
-    sku: str
-    product_name: str
+    sku: Optional[str] = None
+    product_name: Optional[str] = None
     warehouse_id: int
-    warehouse_name: str
+    warehouse_name: Optional[str] = None
     horizon_days: int
-    total_forecasted_demand: float
+    total_forecasted_demand: Optional[float] = None
     confidence_interval_pct: float = 95.0
-    mae: float
-    rmse: float
+    mae: Optional[float] = None
+    rmse: Optional[float] = None
     forecast_data: List[ForecastPoint]
     historical_points: Optional[List[Dict[str, Any]]] = None
-    model_name: Optional[str] = "Statistical ML / Croston Intermittent Model"
+    model_name: Optional[str] = None
+    accuracy_pct: Optional[float] = None
+    database_info: Optional[Dict[str, Any]] = None
+    calculation_trace: Optional[Dict[str, Any]] = None
 
 
 class RiskAssessment(BaseModel):

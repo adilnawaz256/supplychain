@@ -5,8 +5,9 @@ from typing import Dict, Any, List, Optional
 
 from backend.app.core.database import get_db
 from backend.app.services.services import SupplyChainService
-from backend.app.services.ingestion_service import IngestionService
-from backend.app.models.models import WorkspacePipelineConfig, Product
+from backend.app.services.ingestion_service import IngestionService, IngestionRun
+from backend.app.services import jobs, snapshots
+from backend.app.models.models import WorkspacePipelineConfig, Product, ProductForecast
 from backend.connectors.direct_db_connector import DirectDBConnector
 from backend.connectors.zoho_connector import ZohoConnector
 from backend.connectors.sftp_connector import SFTPConnector
@@ -23,10 +24,10 @@ def _get_or_create_config(db: Session) -> WorkspacePipelineConfig:
             industry_vertical="Retail & Distribution",
             connector_type="DIRECT_DB",
             is_connected=0,
-            host="aws-0-ap-southeast-1.pooler.supabase.com",
+            host=None,
             port=5432,
-            database_name="postgres",
-            username="postgres.cugiwyrgfptehvkexejg",
+            database_name=None,
+            username=None,
             ssl_mode="require",
             active_step=1,
             target_table="products"
@@ -44,8 +45,7 @@ def get_connector_status(db: Session = Depends(get_db)):
     """
     cfg = _get_or_create_config(db)
     prod_count = db.query(Product).count()
-    # If the user has products ingested or marked connected, is_connected is True
-    is_conn = bool(cfg.is_connected == 1 or prod_count > 0)
+    is_conn = cfg.is_connected == 1
 
     return {
         "is_connected": is_conn,
@@ -56,11 +56,11 @@ def get_connector_status(db: Session = Depends(get_db)):
         },
         "connector": {
             "type": cfg.connector_type or "DIRECT_DB",
-            "host": cfg.host or "aws-0-ap-southeast-1.pooler.supabase.com",
-            "port": str(cfg.port or 5432),
-            "database": cfg.database_name or "postgres",
-            "username": cfg.username or "postgres.cugiwyrgfptehvkexejg",
-            "ssl_mode": cfg.ssl_mode or "require"
+            "host": cfg.host,
+            "port": str(cfg.port) if cfg.port else None,
+            "database": cfg.database_name,
+            "username": cfg.username,
+            "ssl_mode": cfg.ssl_mode
         },
         "discovered_tables": cfg.discovered_tables or [],
         "active_step": cfg.active_step or (3 if is_conn else 1),
@@ -69,8 +69,9 @@ def get_connector_status(db: Session = Depends(get_db)):
         "field_mappings": cfg.field_mappings or {},
         "last_connected_at": cfg.last_connected_at.isoformat() if cfg.last_connected_at else None,
         "last_ingested_at": cfg.last_ingested_at.isoformat() if cfg.last_ingested_at else None,
-        "ingestion_status": cfg.ingestion_status or ("LIVE_SYNCED" if prod_count > 0 else None),
-        "rows_ingested": cfg.rows_ingested if cfg.rows_ingested > 0 else prod_count,
+        "ingestion_status": cfg.ingestion_status,
+        "rows_ingested": cfg.rows_ingested or 0,
+        "ingestion_history": cfg.ingestion_history or [],
         "total_products": prod_count
     }
 
@@ -173,7 +174,7 @@ def test_connector(payload: Dict[str, Any] = Body(...), db: Session = Depends(ge
             remote_path=payload.get("remote_path", "/exports/daily_feeds")
         )
         return connector.test_connection()
-    return {"status": "SUCCESS", "message": f"Connection to {c_type} validated successfully!"}
+    raise HTTPException(status_code=400, detail=f"Connector type {c_type} is not supported.")
 
 @router.post("/api/connectors/discover", tags=["Wisualyst Onboarding"])
 def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
@@ -189,6 +190,8 @@ def discover_tables(payload: Dict[str, Any] = Body(...), db: Session = Depends(g
             ssl_mode=payload.get("ssl_mode", "disable")
         )
         tables = connector.discover_tables()
+        if connector.last_error:
+            raise HTTPException(status_code=400, detail=f"Could not connect to {payload.get('host') or 'database'}: {connector.last_error}")
     elif c_type == "ZOHO":
         tables = ZohoConnector().discover_modules()
     else:
@@ -243,63 +246,87 @@ def preview_table(payload: Dict[str, Any] = Body(...)):
     records = connector.preview_data(table_name, limit=payload.get("limit", 5))
     return {"records": records}
 
-@router.post("/api/connectors/ingest", tags=["Wisualyst Onboarding"])
+IMPORT_BATCH_SIZE = 5000
+
+
+def _record_import(db: Session, result: Dict[str, Any], source_table: str, target_table: str, mappings: list) -> None:
+    cfg = _get_or_create_config(db)
+    cfg.is_connected = 1
+    cfg.target_table = target_table
+    cfg.selected_external_table = source_table
+    cfg.field_mappings = {m.get("source_field"): m.get("target_canonical_field") for m in mappings}
+    cfg.rows_ingested = result.get("rows_processed", 0)
+    cfg.ingestion_status = result.get("status", "ERROR")
+    cfg.last_ingested_at = datetime.datetime.utcnow()
+    history = [h for h in (cfg.ingestion_history or []) if h.get("source_table") != source_table]
+    history.insert(0, {
+        "source_table": source_table,
+        "target_table": target_table,
+        "status": result.get("status"),
+        "rows_fetched": result.get("rows_fetched", 0),
+        "rows_processed": result.get("rows_processed", 0),
+        "rows_skipped": result.get("rows_skipped", 0),
+        "at": cfg.last_ingested_at.isoformat(),
+    })
+    cfg.ingestion_history = history[:20]
+    if result.get("status") == "SUCCESS":
+        cfg.active_step = 4
+    cfg.updated_at = datetime.datetime.utcnow()
+    db.commit()
+
+
+@router.post("/api/connectors/ingest", status_code=202, tags=["Wisualyst Onboarding"])
 def ingest_remote_data(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     """
-    Pulls data from remote PostgreSQL table, applies user field mappings,
-    and dumps transformed data directly into our internal PostgreSQL tables.
+    Starts a background import of one table from the connected (external) database. Rows are
+    streamed in batches of 5,000 and written into our tables; progress is visible at
+    /api/jobs/{job_id}. When the import finishes, every ML result is recalculated in the background.
     """
     c_type = payload.get("type", "DIRECT_DB").upper()
-    table_name = payload.get("table_name", "products")
+    target_table = payload.get("target_table") or payload.get("table_name") or "products"
+    source_table = payload.get("source_table") or payload.get("table_name") or target_table
     mappings = payload.get("mappings", [])
 
-    if c_type == "DIRECT_DB":
-        connector = DirectDBConnector(
-            host=payload.get("host", ""),
-            port=payload.get("port", 5432),
-            database=payload.get("database", ""),
-            username=payload.get("username", ""),
-            password=payload.get("password", ""),
-            ssl_mode=payload.get("ssl_mode", "disable")
-        )
-        records = connector.fetch_records(table_name, limit=payload.get("limit", 10000))
-        ingestion_svc = IngestionService(db)
-        result = ingestion_svc.ingest_records(table_name, records, mappings)
-        
-        # Persist ingestion success and active step to database
-        try:
-            cfg = _get_or_create_config(db)
-            cfg.is_connected = 1
-            cfg.target_table = table_name
-            cfg.field_mappings = {m.get("source_field"): m.get("target_canonical_field") for m in mappings}
-            cfg.rows_ingested = result.get("rows_processed", 0)
-            cfg.ingestion_status = "SUCCESS"
-            cfg.last_ingested_at = datetime.datetime.utcnow()
-            cfg.active_step = 4
-            cfg.updated_at = datetime.datetime.utcnow()
-            db.commit()
-        except Exception as e:
-            print(f"Error persisting ingestion state in db: {e}")
+    if c_type != "DIRECT_DB":
+        raise HTTPException(status_code=400, detail=f"Data import is only implemented for direct database connections, not {c_type}.")
 
-        return result
-    else:
-        # Default fallback
-        ingestion_svc = IngestionService(db)
-        result = {
-            "status": "SUCCESS",
-            "message": f"Ingestion completed for connector {c_type}",
-            "dataset_summary": ingestion_svc.get_summary()
-        }
+    connector = DirectDBConnector(
+        host=payload.get("host", ""),
+        port=payload.get("port", 5432),
+        database=payload.get("database", ""),
+        username=payload.get("username", ""),
+        password=payload.get("password", ""),
+        ssl_mode=payload.get("ssl_mode", "disable")
+    )
+    try:
+        total_rows = connector.count_rows(source_table)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read table '{source_table}' from the connected database: {e}")
+
+    # The password stays in this closure only; it is never written to the jobs table.
+    def run_import(ctx: jobs.JobContext) -> Dict[str, Any]:
+        run = IngestionRun(ctx.db, source_table, mappings, target_table)
+        ctx.progress(0, total_rows, f"Reading '{source_table}' ({total_rows:,} rows)")
         try:
-            cfg = _get_or_create_config(db)
-            cfg.is_connected = 1
-            cfg.ingestion_status = "SUCCESS"
-            cfg.last_ingested_at = datetime.datetime.utcnow()
-            cfg.active_step = 4
-            db.commit()
+            for batch in connector.stream_records(source_table, IMPORT_BATCH_SIZE):
+                run.ingest_batch(batch)
+                ctx.progress(run.rows_seen, max(total_rows, run.rows_seen),
+                             f"Imported {run.rows_seen:,} of {total_rows:,} rows")
+            result = run.summary()
         except Exception as e:
-            print(f"Error persisting ingestion state: {e}")
+            ctx.db.rollback()
+            result = {**run.summary(), "status": "ERROR",
+                      "message": f"Import stopped after {run.rows_seen:,} rows: {e}"}
+        result.update({"source_table": source_table, "target_table": target_table})
+        _record_import(ctx.db, result, source_table, target_table, mappings)
+        if run.processed > 0:
+            result["ml_job"] = snapshots.start_recalculation(ctx.db, reason=f"import of {source_table}")
         return result
+
+    job = jobs.submit(db, "import", run_import,
+                      params={"source_table": source_table, "target_table": target_table, "total_rows": total_rows},
+                      message=f"Waiting to import '{source_table}'")
+    return jobs.job_to_dict(job)
 
 @router.post("/api/mapping/suggest", tags=["Wisualyst Onboarding"])
 def suggest_mapping(payload: Dict[str, Any] = Body(...)):

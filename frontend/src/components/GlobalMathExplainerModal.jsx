@@ -41,7 +41,7 @@ const ENGINES_EXPLAINER = [
       { step: '3. First-Order Derivative Optimization', desc: 'Solves P* = Cost × [ε / (ε - 1)] bounded to retail limits (±30% spread).' },
       { step: '4. Single-Period Newsvendor Stocking', desc: 'Calculates critical fractile CR = Cu / (Cu + Co) to optimize order size Q* against overstock/understock costs.' }
     ],
-    businessOutcome: 'Provides optimal profit and revenue price tags per SKU, eliminating guesswork and driving +12.9% average profit uplift.'
+    businessOutcome: 'Provides optimal profit and revenue price tags per SKU, eliminating guesswork; the estimated profit uplift is calculated per SKU from your sales data.'
   },
   {
     id: 'policy',
@@ -63,9 +63,9 @@ const ENGINES_EXPLAINER = [
       { step: '1. Demand Volatility Estimation', desc: 'Computes daily demand mean μ_D and standard deviation σ_D over 90 days.' },
       { step: '2. Dynamic Buffer Parameterization', desc: 'Calculates Safety Stock SS = z × σ_D × √L (where z = 1.65 for 95% service level).' },
       { step: '3. Multi-Policy Day-by-Day Replay', desc: 'Simulates daily shipments, receipts, inventory positions, and backorders across all 5 policies.' },
-      { step: '4. Total Logistics Cost Rollup', desc: 'Evaluates holding cost ($0.20/unit/yr) vs ordering setup fees ($35/order) to identify the global minimum cost policy.' }
+      { step: '4. Total Logistics Cost Rollup', desc: 'Evaluates holding cost (15% of unit cost per year) vs ordering setup fees ($50/order) to identify the global minimum cost policy.' }
     ],
-    businessOutcome: 'Recommends Min-Max or Base-Stock policy tailored to each SKU, maintaining 97.6% fill rates while reducing holding capital by 28.4%.'
+    businessOutcome: 'Recommends the lowest-cost policy for each SKU, with fill rate and holding-capital change measured in the backtest on your sales history.'
   },
   {
     id: 'customer',
@@ -89,7 +89,7 @@ const ENGINES_EXPLAINER = [
       { step: '3. Monetary Lifetime Spend', desc: 'Sum of all order totals. Quantile percentiles (p33, p66) assign scores 1-5.' },
       { step: '4. Churn Risk & LTV Prediction', desc: 'Flags VIP accounts exceeding 60 days inactivity as HIGH churn risk for automated retention intervention.' }
     ],
-    businessOutcome: 'Identifies High-LTV customers generating 58.4% of total revenue, prioritizing inventory allocation and VIP fulfilment.'
+    businessOutcome: 'Identifies High-LTV customers and their share of total revenue, prioritizing inventory allocation and VIP fulfilment.'
   },
   {
     id: 'cross_sell',
@@ -113,7 +113,7 @@ const ENGINES_EXPLAINER = [
       { step: '3. Metrics Calculation', desc: 'Computes Support = n(A∩B)/N, Confidence = n(A∩B)/n(A), and Lift = Conf/Supp(B).' },
       { step: '4. Slow-Mover Companion Matching', desc: 'Identifies stagnant bottom-octile items and pairs them with high-lift companion items for bundle discounts.' }
     ],
-    businessOutcome: 'Automates checkout bundle recommendations and attachment liquidation strategies to boost average transaction value by +14.8%.'
+    businessOutcome: 'Automates checkout bundle recommendations and attachment liquidation strategies to grow average transaction value.'
   },
   {
     id: 'trade_area',
@@ -202,12 +202,12 @@ const ENGINES_EXPLAINER = [
       { name: 'purchase_orders', columns: 'po_number, total_cost, status' }
     ],
     calculationSteps: [
-      { step: '1. Annual Demand Projection', desc: 'Projects annual demand D = Reorder_Point × 12.' },
+      { step: '1. Annual Demand Projection', desc: 'Annual demand D = units sold in sales_history × 365 / days covered.' },
       { step: '2. Holding Cost Determination', desc: 'H = Unit_Cost × 0.15 carrying rate.' },
       { step: '3. Wilson Formula Execution', desc: 'EOQ = √[(2 × D × 50) / H], rounding up to integer batches.' },
-      { step: '4. Volume Negotiation Savings', desc: 'Estimates 8% bulk purchasing consolidation rebate achieved by batching.' }
+      { step: '4. Savings vs Current Order Size', desc: 'Savings = yearly cost at current reorder quantity − yearly cost at EOQ, with cost(Q) = D/Q × S + Q/2 × H.' }
     ],
-    businessOutcome: 'Delivers optimized PO dispatch batches and quantifies thousands in procurement savings while tracking supplier OTIF reliability.'
+    businessOutcome: 'Delivers optimized PO dispatch batches and quantifies procurement savings while tracking supplier OTIF reliability.'
   },
   {
     id: 'assortment',

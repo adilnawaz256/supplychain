@@ -65,7 +65,7 @@ export default function BIIntegrationsPanel() {
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.85rem', color: '#818cf8', fontWeight: 700 }}>Protocol: JSON-RPC stdio</div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Registered Tools: {mcpData?.tools?.length || 9}</div>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Registered Tools: {mcpData?.tools ? mcpData.tools.length : '—'}</div>
           </div>
         </div>
 
@@ -95,17 +95,13 @@ export default function BIIntegrationsPanel() {
         {/* Registered Tools Grid */}
         <div>
           <h4 style={{ fontSize: '0.9rem', color: '#f8fafc', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Zap size={16} color="#eab308" /> Registered MCP Intelligence Tools ({mcpData?.tools?.length || 9})
+            <Zap size={16} color="#eab308" /> Registered MCP Intelligence Tools ({mcpData?.tools ? mcpData.tools.length : '—'})
           </h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            {(mcpData?.tools || [
-              { name: 'get_control_tower_summary', description: 'Executive summary metrics' },
-              { name: 'get_inventory_risk', description: 'Stockout risk matrix & safety stock' },
-              { name: 'get_demand_forecast', description: 'AI statistical forecast (7, 14, 30d)' },
-              { name: 'get_inventory_recommendations', description: 'EOQ purchase order quantities' },
-              { name: 'get_products', description: 'Product catalog & lead times' },
-              { name: 'get_suppliers', description: 'Supplier OTIF scores & ratings' }
-            ]).map((t, idx) => (
+            {!mcpData?.tools && (
+              <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Tool list unavailable — MCP server not reachable.</div>
+            )}
+            {(mcpData?.tools || []).map((t, idx) => (
               <div key={idx} style={{ padding: '12px 14px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#818cf8', fontSize: '0.82rem', marginBottom: '4px' }}>
                   {t.name}

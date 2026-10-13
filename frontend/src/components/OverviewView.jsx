@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
   Box,
@@ -25,6 +25,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { API_BASE_URL } from '../config/api';
+import HomeInsightsPanel from './HomeInsightsPanel';
 
 export default function OverviewView({ onNavigate, onOpenRecommendationModal }) {
   const [summary, setSummary] = useState(null);
@@ -36,6 +37,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
   const [recommendations, setRecommendations] = useState([]);
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [insights, setInsights] = useState(null);
+  const handleInsightsLoaded = useCallback((data) => setInsights(data), []);
   const [isDbConnected, setIsDbConnected] = useState(() => {
     try {
       return localStorage.getItem('wisualyst_db_connected') === 'true';
@@ -104,37 +107,24 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         if (res.ok) {
           const data = await res.json();
           setForecastMeta(data);
-          const points = data.forecast_data || data.forecast_points || [];
-          if (points.length > 0) {
-            const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-            const chartPoints = points.map((pt, idx) => {
-              const fVal = pt.forecasted_demand ?? pt.predicted_demand ?? 0;
-              const hist = data.historical_points?.[idx]?.actual_demand ?? Math.round(fVal * (0.88 + (idx % 3) * 0.06));
-              
-              let formattedDate = `Day ${idx + 1}`;
-              if (pt.date && pt.date.includes('-')) {
-                const parts = pt.date.split('-');
-                if (parts.length === 3) {
-                  const m = parseInt(parts[1], 10) - 1;
-                  const d = parseInt(parts[2], 10);
-                  formattedDate = `${monthNames[m] || parts[1]} ${d}`;
-                } else {
-                  formattedDate = pt.date.substring(5);
-                }
-              }
-
-              return {
-                date: formattedDate,
-                fullDate: pt.date,
-                forecast: Math.round(fVal),
-                actual: Math.round(hist),
-                upperConf: Math.round(pt.upper_bound ?? fVal * 1.2),
-                lowerConf: Math.round(pt.lower_bound ?? fVal * 0.8),
-                confidence: Math.round((data.confidence_interval_pct ?? 95))
-              };
-            });
-            setForecastData(chartPoints);
-          }
+          const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          const label = (iso) => {
+            const parts = (iso || '').split('-');
+            return parts.length === 3 ? `${monthNames[parseInt(parts[1], 10) - 1]} ${parseInt(parts[2], 10)}` : iso;
+          };
+          const history = (data.historical_points || []).slice(-forecastHorizon).map(pt => ({
+            date: label(pt.date),
+            fullDate: pt.date,
+            actual: pt.actual_demand != null ? Math.round(pt.actual_demand) : null
+          }));
+          const future = (data.forecast_data || []).map(pt => ({
+            date: label(pt.date),
+            fullDate: pt.date,
+            forecast: pt.forecasted_demand != null ? Math.round(pt.forecasted_demand) : null,
+            upperConf: pt.upper_bound != null ? Math.round(pt.upper_bound) : null,
+            lowerConf: pt.lower_bound != null ? Math.round(pt.lower_bound) : null
+          }));
+          setForecastData([...history, ...future]);
         }
       } catch (err) {
         console.error('Error loading product forecast:', err);
@@ -159,19 +149,23 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
   })();
 
   const totalProducts = products.length;
-  const readinessScore = summary?.overall_readiness_pct || 0;
+  const readinessRaw = summary?.overall_readiness_pct;
+  const readinessKnown = readinessRaw != null && !Number.isNaN(Number(readinessRaw));
+  const readinessScore = readinessKnown ? Number(readinessRaw) : 0; // 0 only drives the ring; text shows '—' when unknown
 
   const totalItems = summary?.total_inventory_items || 0;
   const criticalCount = summary?.stockout_critical_count || 0;
   const highCount = summary?.stockout_high_count || 0;
-  const stockoutRiskPct = totalItems > 0 ? ((criticalCount + highCount) / totalItems * 100).toFixed(1) : '0.0';
-  const forecastAccuracyPct = summary?.avg_supplier_otif ? summary.avg_supplier_otif.toFixed(1) : (summary?.avg_forecast_accuracy ? summary.avg_forecast_accuracy.toFixed(1) : '0.0');
+  const stockoutRiskPct = totalItems > 0 ? ((criticalCount + highCount) / totalItems * 100).toFixed(1) : '—';
+  const demandEngine = insights?.engines?.find(e => e.id === 'demand');
+  const forecastAccuracyPct = demandEngine?.accuracy_pct != null && !Number.isNaN(Number(demandEngine.accuracy_pct)) ? Number(demandEngine.accuracy_pct).toFixed(1) : '—';
 
-  const savingsFormatted = summary?.total_inventory_value && summary.total_inventory_value > 0
-    ? (summary.total_inventory_value >= 1000000 
-        ? `$${(summary.total_inventory_value / 1000000).toFixed(2)}M` 
-        : `$${summary.total_inventory_value.toLocaleString()}`)
-    : '$0.00';
+  const invVal = summary?.total_inventory_value != null && !Number.isNaN(Number(summary.total_inventory_value)) ? Number(summary.total_inventory_value) : null;
+  const savingsFormatted = invVal != null
+    ? (invVal >= 1000000
+        ? `$${(invVal / 1000000).toFixed(2)}M`
+        : `$${invVal.toLocaleString()}`)
+    : '—';
 
   const activeHubs = summary?.total_warehouses || 0;
 
@@ -186,8 +180,8 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
     iconColor: r.module === 'procurement' ? '#7c3aed' : r.module === 'assortment' ? '#ea580c' : '#2563eb',
     type: r.module === 'procurement' ? 'arrow-down' : r.module === 'assortment' ? 'truck' : 'cart',
     desc: r.summary || r.reason,
-    impact: typeof r.financial_impact === 'number' ? `$${r.financial_impact.toLocaleString()}` : (r.financial_impact || '$0'),
-    confidence: `${Math.round((r.confidence || 0.92) * 100)}%`,
+    impact: typeof r.financial_impact === 'number' ? `$${r.financial_impact.toLocaleString()}` : (r.financial_impact || '—'),
+    confidence: r.confidence != null && !Number.isNaN(Number(r.confidence)) ? `${Math.round(Number(r.confidence) * 100)}%` : '—',
     raw: r
   }));
 
@@ -221,7 +215,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
               <Info size={14} color="#94a3b8" />
             </div>
             <div style={{ marginTop: '10px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-              <span style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a' }}>{Math.round(readinessScore)}</span>
+              <span style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a' }}>{readinessKnown ? Math.round(readinessScore) : '—'}</span>
               <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 500 }}>/100</span>
             </div>
             <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: readinessScore > 0 ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
@@ -267,7 +261,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
               <Info size={14} color="#94a3b8" />
             </div>
             <div style={{ marginTop: '10px' }}>
-              <span style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a' }}>{stockoutRiskPct}%</span>
+              <span style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a' }}>{stockoutRiskPct}{stockoutRiskPct !== '—' ? '%' : ''}</span>
             </div>
             <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: criticalCount > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>
               <span>{criticalCount > 0 ? `● ${criticalCount} Critical Lines` : '✓ 0 Critical Lines'}</span>
@@ -290,7 +284,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         {/* KPI 3: Forecast Accuracy */}
         <div
           className="ui-card ui-card-hover"
-          title="CALCULATION METHODOLOGY: Forecast Accuracy % is calculated as (100% - WMAPE) comparing historical demand points against AI statistical machine learning model predictions over a 30-day horizon."
+          title="How it's calculated: we hide the most recent sales (28 days, or 7 when history is short), predict them from the earlier days, and compare the predicted totals with what really sold. Accuracy = 100% - (total miss / units really sold)."
           style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'help' }}
         >
           <div>
@@ -299,10 +293,10 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
               <Info size={14} color="#94a3b8" />
             </div>
             <div style={{ marginTop: '10px' }}>
-              <span style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a' }}>{forecastAccuracyPct}%</span>
+              <span style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a' }}>{forecastAccuracyPct}{forecastAccuracyPct !== '—' ? '%' : ''}</span>
             </div>
             <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: hasConnectedSources ? '#10b981' : '#94a3b8', fontWeight: 600 }}>
-              <span>{hasConnectedSources ? '↑ Statistical ML Model Active' : 'No Model Loaded'}</span>
+              <span>{demandEngine?.accuracy_pct != null ? `Backtested on last ${demandEngine.accuracy_window}` : 'Needs 21+ days of sales'}</span>
             </div>
           </div>
 
@@ -353,6 +347,14 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
         </div>
       </div>
 
+      <HomeInsightsPanel onNavigate={onNavigate} onLoaded={handleInsightsLoaded} />
+
+      {forecastMeta?.calculation_trace?.explanation && (
+        <div style={{ fontSize: '0.8rem', color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', lineHeight: 1.5 }}>
+          <strong>Forecast for {forecastMeta.sku}:</strong> {forecastMeta.calculation_trace.explanation}
+        </div>
+      )}
+
       {/* MIDDLE 2-COLUMN GRID: Real Forecast vs Actual Chart & Top Recommendations */}
       <div style={{
         display: 'grid',
@@ -384,7 +386,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
                     backgroundColor: '#eff6ff',
                     color: '#2563eb'
                   }}>
-                    {forecastMeta.total_forecasted_demand} units ({forecastHorizon}d)
+                    {forecastMeta.total_forecasted_demand ?? '—'} units ({forecastHorizon}d)
                   </span>
                   <span style={{
                     fontSize: '0.72rem',
@@ -394,7 +396,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
                     backgroundColor: '#ecfdf5',
                     color: '#059669'
                   }}>
-                    MAE {forecastMeta.mae} • 95% Conf
+                    {forecastMeta.accuracy_pct != null ? `${forecastMeta.accuracy_pct}% accurate` : 'accuracy: need more history'} • MAE {forecastMeta.mae ?? '—'}
                   </span>
                 </div>
               )}
@@ -459,7 +461,7 @@ export default function OverviewView({ onNavigate, onOpenRecommendationModal }) 
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b', fontWeight: 600 }}>
               <span style={{ width: 10, height: 3, backgroundColor: '#6366f1', display: 'inline-block', borderRadius: 2 }}></span>
-              <span>Actual Orders</span>
+              <span>Actual sales (past days)</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#94a3b8' }}>
               <span style={{ width: 12, height: 7, backgroundColor: 'rgba(37,99,235,0.14)', display: 'inline-block', borderRadius: 2 }}></span>

@@ -105,6 +105,7 @@ class WorkspacePipelineConfig(Base):
     last_ingested_at = Column(DateTime, nullable=True)
     ingestion_status = Column(String(50), nullable=True)
     rows_ingested = Column(Integer, default=0)
+    ingestion_history = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -169,8 +170,8 @@ class Supplier(Base):
     contact_email = Column(String(100), nullable=True)
     contact_phone = Column(String(50), nullable=True)
     lead_time_avg_days = Column(Integer, default=7)
-    rating = Column(Float, default=4.5)
-    otif_score = Column(Float, default=92.5)
+    rating = Column(Float, nullable=True, default=None)
+    otif_score = Column(Float, nullable=True, default=None)
     is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -198,6 +199,7 @@ class SalesHistory(Base):
     unit_price = Column(Float, nullable=False)
     revenue = Column(Float, nullable=False)
     is_promotional = Column(Integer, default=0)
+    source_key = Column(String(40), nullable=True, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class RetailSpace(Base):
@@ -321,3 +323,29 @@ class ProductForecast(Base):
     historical_points = Column(JSON, nullable=True)
     model_name = Column(String(100), default="Statistical ML / Croston Intermittent Model")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class BackgroundJob(Base):
+    """Long-running work (data import, ML recalculation) run outside the HTTP request."""
+    __tablename__ = "background_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(50), nullable=False, index=True)
+    status = Column(String(20), default="QUEUED", index=True)  # QUEUED, RUNNING, SUCCESS, ERROR
+    progress_done = Column(Integer, default=0)
+    progress_total = Column(Integer, nullable=True)
+    message = Column(Text, nullable=True)
+    params = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class MLResultSnapshot(Base):
+    """Latest saved output of one ML endpoint, so the dashboard does not recompute on every request."""
+    __tablename__ = "ml_result_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), nullable=False, unique=True, index=True)
+    payload = Column(JSON, nullable=True)
+    computed_at = Column(DateTime, default=datetime.utcnow)
+    duration_ms = Column(Integer, default=0)

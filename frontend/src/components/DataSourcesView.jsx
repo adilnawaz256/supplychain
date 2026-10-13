@@ -36,7 +36,11 @@ const TARGET_TABLE_CANONICAL = {
     { key: 'selling_price', label: 'Selling Price (selling_price)', required: false },
     { key: 'lead_time_days', label: 'Lead Time Days (lead_time_days)', required: false },
     { key: 'safety_stock_min', label: 'Safety Stock Min (safety_stock_min)', required: false },
-    { key: 'reorder_point', label: 'Reorder Point (reorder_point)', required: false }
+    { key: 'reorder_point', label: 'Reorder Point (reorder_point)', required: false },
+    { key: 'warehouse_code', label: 'Warehouse Code (inventory)', required: false },
+    { key: 'current_stock', label: 'Stock On Hand (inventory)', required: false },
+    { key: 'supplier_code', label: 'Supplier Code (suppliers)', required: false },
+    { key: 'supplier_name', label: 'Supplier Name (suppliers)', required: false }
   ],
   orders: [
     { key: 'order_number', label: 'Order Number (order_number)', required: true },
@@ -44,11 +48,15 @@ const TARGET_TABLE_CANONICAL = {
     { key: 'order_date', label: 'Order Date (order_date)', required: true },
     { key: 'status', label: 'Status (status)', required: false },
     { key: 'total_amount', label: 'Total Amount (total_amount)', required: false },
-    { key: 'shipping_address', label: 'Shipping Address (shipping_address)', required: false }
+    { key: 'shipping_address', label: 'Shipping Address (shipping_address)', required: false },
+    { key: 'product_sku', label: 'Product SKU (feeds sales history)', required: false },
+    { key: 'quantity_sold', label: 'Quantity Sold (feeds sales history)', required: false },
+    { key: 'sales_revenue', label: 'Line Revenue (feeds sales history)', required: false },
+    { key: 'warehouse_code', label: 'Warehouse Code', required: false }
   ],
   inventory: [
-    { key: 'product_id', label: 'Product ID (product_id)', required: true },
-    { key: 'warehouse_id', label: 'Warehouse ID (warehouse_id)', required: false },
+    { key: 'product_id', label: 'Product SKU / ID (product_id)', required: true },
+    { key: 'warehouse_id', label: 'Warehouse Code / ID (warehouse_id)', required: false },
     { key: 'current_stock', label: 'Current Stock (current_stock)', required: true },
     { key: 'reserved_stock', label: 'Reserved Stock (reserved_stock)', required: false },
     { key: 'reorder_quantity', label: 'Reorder Quantity (reorder_quantity)', required: false }
@@ -66,14 +74,6 @@ const TARGET_TABLE_CANONICAL = {
     { key: 'email', label: 'Email (email)', required: false },
     { key: 'tier', label: 'Tier (tier)', required: false }
   ]
-};
-
-const DEFAULT_EXT_COLUMNS = {
-  products: ['StockCode', 'ItemDescription', 'CategoryName', 'UnitCost', 'SellingPrice', 'LeadTimeDays', 'SafetyStock'],
-  orders: ['OrderNo', 'CustomerRef', 'OrderDate', 'OrderStatus', 'OrderTotal', 'ShipToAddress'],
-  inventory: ['ProductID', 'WarehouseID', 'QtyOnHand', 'ReservedQty', 'MinReorderQty'],
-  shipments: ['TrackingNo', 'OrderRef', 'CarrierName', 'ShipmentStatus', 'ShipDate'],
-  customers: ['CustCode', 'CustomerName', 'ContactEmail', 'AccountTier']
 };
 
 const autoMapColumn = (colName, tableName) => {
@@ -104,14 +104,7 @@ export default function DataSourcesView({ onNavigate }) {
       const saved = localStorage.getItem('wisualyst_connected_db_config');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return {
-      host: 'aws-0-ap-southeast-1.pooler.supabase.com',
-      port: '5432',
-      database: 'postgres',
-      username: 'postgres.cugiwyrgfptehvkexejg',
-      password: '',
-      ssl_mode: 'require'
-    };
+    return { host: '', port: '5432', database: '', username: '', password: '', ssl_mode: 'require' };
   });
 
   const [isConnecting, setIsConnecting] = useState(false);
@@ -137,20 +130,14 @@ export default function DataSourcesView({ onNavigate }) {
     }
   });
 
-  const [externalColumns, setExternalColumns] = useState(() => DEFAULT_EXT_COLUMNS.products);
-  const [fieldMappings, setFieldMappings] = useState({
-    'StockCode': 'sku',
-    'ItemDescription': 'name',
-    'CategoryName': 'category',
-    'UnitCost': 'unit_cost',
-    'SellingPrice': 'selling_price',
-    'LeadTimeDays': 'lead_time_days',
-    'SafetyStock': 'safety_stock_min'
-  });
+  const [externalColumns, setExternalColumns] = useState([]);
+  const [fieldMappings, setFieldMappings] = useState({});
 
   // --- Step 4: Data Dump & Ingestion Execution ---
   const [isDumping, setIsDumping] = useState(false);
   const [dumpResult, setDumpResult] = useState(null);
+  const [importHistory, setImportHistory] = useState([]);
+  const [importJob, setImportJob] = useState(null);
 
   // --- Persistent Multi-Device Synchronization ---
   // Fetches live status from PostgreSQL backend so all laptops/browsers show connected
@@ -160,10 +147,11 @@ export default function DataSourcesView({ onNavigate }) {
       if (!res.ok) return;
       const data = await res.json();
 
-      if (data.is_connected) {
-        setIsConnected(true);
-        localStorage.setItem('wisualyst_db_connected', 'true');
-      }
+      setIsConnected(!!data.is_connected);
+      try {
+        if (data.is_connected) localStorage.setItem('wisualyst_db_connected', 'true');
+        else localStorage.removeItem('wisualyst_db_connected');
+      } catch (e) {}
 
       if (data.workspace) {
         if (data.workspace.name) setWorkspaceName(data.workspace.name);
@@ -200,12 +188,12 @@ export default function DataSourcesView({ onNavigate }) {
         setFieldMappings(prev => ({ ...prev, ...data.field_mappings }));
       }
 
-      if (data.ingestion_status || data.rows_ingested > 0 || data.total_products > 0) {
-        const rows = data.rows_ingested || data.total_products || 150;
-        setDumpResult({
+      setImportHistory(data.ingestion_history || []);
+      if (data.ingestion_status === 'SUCCESS') {
+        setDumpResult(prev => prev?.details ? prev : {
           status: 'SUCCESS',
-          message: `Live data pipeline active. ${rows} records synchronized in Supabase '${data.target_table || 'products'}' table.`,
-          rowsIngested: rows
+          message: `Last import: ${data.rows_ingested} rows from '${data.selected_external_table}' into '${data.target_table}'.`,
+          rowsIngested: data.rows_ingested
         });
       }
     } catch (err) {
@@ -235,10 +223,6 @@ export default function DataSourcesView({ onNavigate }) {
       if (matchingTableObj && matchingTableObj.columns && matchingTableObj.columns.length > 0) {
         cols = matchingTableObj.columns;
       }
-    }
-
-    if (!cols || cols.length === 0) {
-      cols = DEFAULT_EXT_COLUMNS[targetTable] || DEFAULT_EXT_COLUMNS.products;
     }
 
     setExternalColumns(cols);
@@ -294,7 +278,11 @@ export default function DataSourcesView({ onNavigate }) {
       });
 
       const data = await res.json();
-      if (res.ok && data.tables && data.tables.length > 0) {
+      if (!res.ok) {
+        setConnectErrorMsg(data.detail || 'Could not connect to the database. Check host, port, username and password.');
+        return;
+      }
+      if (data.tables && data.tables.length > 0) {
         setIsConnected(true);
         setDiscoveredTables(data.tables);
         setSelectedExternalTable(data.tables[0].table_name);
@@ -307,17 +295,11 @@ export default function DataSourcesView({ onNavigate }) {
         setTimeout(() => setActiveStep(3), 600);
       } else {
         setIsConnected(true);
-        setConnectSuccessMsg('Connected! Database configuration synchronized across devices.');
-        try {
-          localStorage.setItem('wisualyst_db_connected', 'true');
-          localStorage.setItem('wisualyst_connected_db_config', JSON.stringify(dbForm));
-        } catch (e) {}
-        setTimeout(() => setActiveStep(3), 800);
+        setDiscoveredTables([]);
+        setConnectSuccessMsg('Connected, but this database has no tables we can read.');
       }
     } catch (err) {
-      setIsConnected(true);
-      setConnectSuccessMsg('Connection active. Prepopulated column mappings.');
-      setTimeout(() => setActiveStep(3), 800);
+      setConnectErrorMsg(`Could not reach the backend: ${err.message}`);
     } finally {
       setIsConnecting(false);
     }
@@ -365,8 +347,9 @@ export default function DataSourcesView({ onNavigate }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: connectorType,
-          table_name: targetTable,
-          mappings: Object.entries(fieldMappings).map(([src, tgt]) => ({
+          source_table: selectedExternalTable,
+          target_table: targetTable,
+          mappings: Object.entries(fieldMappings).filter(([src, tgt]) => tgt && externalColumns.includes(src)).map(([src, tgt]) => ({
             source_field: src,
             target_canonical_field: tgt
           })),
@@ -374,22 +357,38 @@ export default function DataSourcesView({ onNavigate }) {
         })
       });
 
-      const data = await res.json();
+      const job = await res.json();
+      if (!res.ok) {
+        setDumpResult({ status: 'ERROR', message: job.detail || 'Import failed.' });
+        return;
+      }
+      // The import runs in the background in batches; follow its progress until it finishes.
+      let current = job;
+      setImportJob(current);
+      while (current.status === 'QUEUED' || current.status === 'RUNNING') {
+        await new Promise(r => setTimeout(r, 1500));
+        const poll = await fetch(`${API_BASE_URL}/api/jobs/${job.id}`);
+        current = await poll.json();
+        setImportJob(current);
+      }
+      const data = current.result || {};
+      if (current.status !== 'SUCCESS') {
+        setDumpResult({ status: 'ERROR', message: current.message || 'Import failed.' });
+        return;
+      }
       setDumpResult({
         status: 'SUCCESS',
-        message: data.message || `Successfully mapped columns and ingested records into Supabase '${targetTable}' table!`,
-        rowsIngested: data.rows_processed || 150
+        message: data.message,
+        rowsIngested: data.rows_processed,
+        details: data
       });
       setActiveStep(4);
+      syncFromBackend();
     } catch (err) {
-      setDumpResult({
-        status: 'SUCCESS',
-        message: `Successfully synchronized and mapped columns into Supabase database table '${targetTable}'!`,
-        rowsIngested: 150
-      });
-      setActiveStep(4);
+      setDumpResult({ status: 'ERROR', message: `Could not reach the backend: ${err.message}` });
     } finally {
       setIsDumping(false);
+      setImportJob(null);
     }
   };
 
@@ -601,6 +600,13 @@ export default function DataSourcesView({ onNavigate }) {
             </div>
           )}
 
+          {connectErrorMsg && (
+            <div style={{ padding: '12px 16px', borderRadius: '10px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.85rem', marginBottom: '20px', display: 'flex', alignItems: 'flex-start', gap: '8px', wordBreak: 'break-word' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+              <span>{connectErrorMsg}</span>
+            </div>
+          )}
+
           {isConnected && !connectSuccessMsg && (
             <div style={{ padding: '12px 16px', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', fontSize: '0.85rem', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -629,7 +635,7 @@ export default function DataSourcesView({ onNavigate }) {
           <form onSubmit={handleConnectDatabase} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '28px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Host / Server Address</label>
-              <input type="text" required value={dbForm.host} onChange={(e) => setDbForm({ ...dbForm, host: e.target.value })} className="ui-input" placeholder="aws-0-ap-southeast-1.pooler.supabase.com" />
+              <input type="text" required value={dbForm.host} onChange={(e) => setDbForm({ ...dbForm, host: e.target.value })} className="ui-input" placeholder="db.example.com" />
             </div>
 
             <div>
@@ -644,7 +650,7 @@ export default function DataSourcesView({ onNavigate }) {
 
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Username</label>
-              <input type="text" required value={dbForm.username} onChange={(e) => setDbForm({ ...dbForm, username: e.target.value })} className="ui-input" placeholder="postgres.cugiwyrgfptehvkexejg" />
+              <input type="text" required value={dbForm.username} onChange={(e) => setDbForm({ ...dbForm, username: e.target.value })} className="ui-input" placeholder="database user" />
             </div>
 
             <div>
@@ -707,15 +713,14 @@ export default function DataSourcesView({ onNavigate }) {
               </span>
             </div>
 
+            {discoveredTables.length === 0 && (
+              <div style={{ fontSize: '0.84rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '10px 14px', borderRadius: '10px' }}>
+                No tables discovered yet. Go back to Step 2, enter your database password and click "Connect & Fetch Schema Columns".
+              </div>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {(discoveredTables.length > 0 ? discoveredTables : [
-                { table_name: 'ext_products', record_count: 150, columns: DEFAULT_EXT_COLUMNS.products },
-                { table_name: 'ext_orders', record_count: 420, columns: DEFAULT_EXT_COLUMNS.orders },
-                { table_name: 'ext_inventory', record_count: 310, columns: DEFAULT_EXT_COLUMNS.inventory },
-                { table_name: 'ext_shipments', record_count: 85, columns: DEFAULT_EXT_COLUMNS.shipments },
-                { table_name: 'ext_customers', record_count: 230, columns: DEFAULT_EXT_COLUMNS.customers }
-              ]).map((t) => {
-                const isSelected = (selectedExternalTable === t.table_name) || (!selectedExternalTable && t.table_name === 'ext_products');
+              {discoveredTables.map((t) => {
+                const isSelected = selectedExternalTable === t.table_name;
                 return (
                   <button
                     key={t.table_name}
@@ -840,10 +845,38 @@ export default function DataSourcesView({ onNavigate }) {
             </table>
           </div>
 
+          {importJob && (
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.84rem', color: '#1e40af', fontWeight: 600, flexWrap: 'wrap' }}>
+                <span>{importJob.message}</span>
+                {importJob.progress_pct != null && <span>{importJob.progress_pct}%</span>}
+              </div>
+              <div style={{ marginTop: 8, height: 8, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ width: `${importJob.progress_pct ?? 3}%`, height: '100%', background: '#2563eb', transition: 'width 0.4s ease' }} />
+              </div>
+              <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#475569' }}>
+                Rows are copied in batches of 5,000. You can leave this page; the import keeps running on the server.
+              </div>
+            </div>
+          )}
+
+          {dumpResult?.status === 'ERROR' && (
+            <div style={{ padding: '12px 16px', borderRadius: '10px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.85rem', marginBottom: '20px', display: 'flex', alignItems: 'flex-start', gap: '8px', wordBreak: 'break-word' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+              <span>{dumpResult.message}</span>
+            </div>
+          )}
+
+          {!dbForm.password && (
+            <div style={{ fontSize: '0.8rem', color: '#92400e', marginBottom: '14px' }}>
+              The database password is not stored. If the import fails with an authentication error, re-enter it in Step 2.
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <button onClick={() => setActiveStep(2)} className="btn-secondary">Back to Step 2</button>
-            <button onClick={handleExecuteDataDump} disabled={isDumping} className="btn-primary" style={{ padding: '12px 28px' }}>
-              {isDumping ? 'Ingesting Data...' : 'Save Mappings & Dump Data into Supabase →'}
+            <button onClick={handleExecuteDataDump} disabled={isDumping || !selectedExternalTable} className="btn-primary" style={{ padding: '12px 28px' }}>
+              {isDumping ? `Copying rows from ${selectedExternalTable}...` : `Import '${selectedExternalTable || '—'}' into ${targetTable} →`}
             </button>
           </div>
         </div>
@@ -857,31 +890,67 @@ export default function DataSourcesView({ onNavigate }) {
           </div>
 
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
-            Data Pipeline Synchronized Successfully!
+            Data imported
           </h2>
 
           <p style={{ fontSize: '0.95rem', color: '#475569', maxWidth: '600px', margin: '0 auto 24px auto', lineHeight: 1.5 }}>
-            {dumpResult?.message || `Successfully mapped columns and ingested records into the Supabase '${targetTable}' table.`}
+            {dumpResult?.message || 'No import has run yet. Pick a table in Step 3 and import it.'}
           </p>
 
-          <div style={{ display: 'inline-grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', background: '#f8fafc', padding: '20px 32px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Target Table</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#2563eb' }}>{targetTable.toUpperCase()}</div>
+          {dumpResult?.details && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', maxWidth: '760px', margin: '0 auto 24px auto', textAlign: 'left' }}>
+              {[
+                ['Rows read', dumpResult.details.rows_fetched],
+                ['Rows imported', dumpResult.details.rows_processed],
+                ['Rows skipped', dumpResult.details.rows_skipped],
+                ['Products', dumpResult.details.products_upserted],
+                ['Stock lines', dumpResult.details.inventory_upserted],
+                ['New sales rows', dumpResult.details.sales_created],
+                ['Sales already present', dumpResult.details.sales_already_present],
+                ['Suppliers', dumpResult.details.suppliers_upserted],
+                ['Customers', dumpResult.details.customers_upserted],
+                ['Orders', dumpResult.details.orders_upserted],
+                ['Order lines', dumpResult.details.order_lines_created],
+                ['Shipments', dumpResult.details.shipments_upserted]
+              ].filter(([, v]) => v).map(([label, v]) => (
+                <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{label}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>{Number(v).toLocaleString()}</div>
+                </div>
+              ))}
             </div>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Records Dumped</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#10b981' }}>{dumpResult?.rowsIngested || 150} rows</div>
+          )}
+
+          {dumpResult?.details?.skip_reasons && Object.keys(dumpResult.details.skip_reasons).length > 0 && (
+            <p style={{ fontSize: '0.82rem', color: '#b45309', margin: '0 auto 20px auto', maxWidth: '600px' }}>
+              Skipped: {Object.entries(dumpResult.details.skip_reasons).map(([r, n]) => `${n} rows (${r})`).join(', ')}
+            </p>
+          )}
+
+          {importHistory.length > 0 && (
+            <div style={{ maxWidth: '760px', margin: '0 auto 28px auto', textAlign: 'left', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', background: '#f8fafc', fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
+                Tables imported so far
+              </div>
+              {importHistory.map((h) => (
+                <div key={h.source_table} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #f1f5f9', fontSize: '0.82rem' }}>
+                  <span><code>{h.source_table}</code> &rarr; <strong>{h.target_table}</strong></span>
+                  <span style={{ color: h.status === 'SUCCESS' ? '#047857' : '#b91c1c', fontWeight: 600 }}>
+                    {h.status === 'SUCCESS' ? `${h.rows_processed} rows` : 'failed'} · {new Date(h.at + 'Z').toLocaleString()}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Pipeline Status</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7c3aed' }}>Live Synced Across Devices</div>
-            </div>
-          </div>
+          )}
+
+          <p style={{ fontSize: '0.85rem', color: '#475569', maxWidth: '620px', margin: '0 auto 24px auto', lineHeight: 1.5 }}>
+            The ML engines are now recalculating with this data in the background. The Home dashboard shows their progress
+            and updates by itself when they finish. Import more tables (sales, stock, customers, orders) to switch on more engines.
+          </p>
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
-            <button onClick={() => setActiveStep(3)} className="btn-secondary">Map Another Table</button>
-            <button onClick={() => onNavigate && onNavigate('overview')} className="btn-primary">Go to Control Tower Overview →</button>
+            <button onClick={() => setActiveStep(3)} className="btn-secondary">Import another table</button>
+            <button onClick={() => onNavigate && onNavigate('overview')} className="btn-primary">See what the ML engines found →</button>
           </div>
         </div>
       )}

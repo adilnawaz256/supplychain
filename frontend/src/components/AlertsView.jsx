@@ -105,7 +105,7 @@ export default function AlertsView() {
         body: JSON.stringify({
           channel: teamChannel,
           type: 'STOCKOUT_ALERT',
-          data: topCriticalRisk || { sku: 'SKU-ELEC-101', name: 'Smart IoT Sensor Node v2', risk: 'CRITICAL' }
+          data: topCriticalRisk || { test: true, message: 'Test message from Wisualyst — no critical stockout in the database right now.' }
         })
       });
       setTestSent(true);

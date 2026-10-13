@@ -87,12 +87,19 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
   }, []);
 
   const savedConnected = typeof window !== 'undefined' ? localStorage.getItem('wisualyst_connected_sources') : null;
-  const isAnyConnected = savedConnected ? Object.values(JSON.parse(savedConnected)).some(Boolean) : false;
-  const totalProducts = summary?.total_products ?? (isAnyConnected ? 50 : 0);
-  const hasData = isDbConnected || isAnyConnected || totalProducts > 0;
-  const totalTransactions = hasData
-    ? `${(totalProducts * 543).toLocaleString()} rows`
-    : '0 rows';
+  let connectedSourcesCount = 0;
+  try {
+    connectedSourcesCount = savedConnected ? Object.values(JSON.parse(savedConnected)).filter(Boolean).length : 0;
+  } catch (e) { connectedSourcesCount = 0; }
+  if (connectedSourcesCount === 0 && isDbConnected) connectedSourcesCount = 1;
+  const isAnyConnected = connectedSourcesCount > 0;
+  // Real counts only (from /api/control-tower/summary); null means unknown -> '—'
+  const totalProducts = summary?.total_products ?? null;
+  const salesRows = summary?.dataset_summary?.sales_history_records ?? null;
+  const hasData = isDbConnected || isAnyConnected || (totalProducts ?? 0) > 0;
+  const totalTransactions = salesRows != null && !Number.isNaN(Number(salesRows))
+    ? `${Number(salesRows).toLocaleString()} rows`
+    : '—';
 
   const biIntegrations = [
     {
@@ -102,7 +109,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
       endpoint: '/api/bi/powerbi',
       lastSync: hasData ? 'Live Connected' : 'Disconnected',
       exportedRows: totalTransactions,
-      totalExports: hasData ? 24 : 0,
       action: 'Export now',
       color: '#f59e0b',
       iconText: 'PBI'
@@ -114,7 +120,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
       endpoint: '/api/bi/qlik',
       lastSync: hasData ? 'Live Connected' : 'Disconnected',
       exportedRows: totalTransactions,
-      totalExports: hasData ? 18 : 0,
       action: 'Export now',
       color: '#10b981',
       iconText: 'Q'
@@ -126,7 +131,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
       endpoint: '/api/bi/export/csv',
       lastSync: hasData ? 'Ready to Stream' : 'Ready',
       exportedRows: totalTransactions,
-      totalExports: hasData ? 32 : 0,
       action: 'Download CSV',
       color: '#059669',
       iconText: 'G'
@@ -138,7 +142,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
       endpoint: '/api/bi/powerbi',
       lastSync: hasData ? 'Live Connected' : 'Disconnected',
       exportedRows: totalTransactions,
-      totalExports: hasData ? 14 : 0,
       action: 'Configure',
       color: '#2563eb',
       iconText: 'Tab'
@@ -150,7 +153,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
       endpoint: '/api/bi/powerbi',
       lastSync: hasData ? 'Live Connected' : 'Disconnected',
       exportedRows: totalTransactions,
-      totalExports: hasData ? 9 : 0,
       action: 'Configure',
       color: '#3b82f6',
       iconText: 'LS'
@@ -162,7 +164,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
       endpoint: '/api/bi/export/csv',
       lastSync: hasData ? 'Ready to Stream' : 'Ready',
       exportedRows: totalTransactions,
-      totalExports: hasData ? 11 : 0,
       action: 'Export now',
       color: '#16a34a',
       iconText: 'XLS'
@@ -194,10 +195,10 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        setExportMsg(prev => ({ ...prev, [item.id]: `✓ Downloaded ${data.records?.length || 27150} rows` }));
+        setExportMsg(prev => ({ ...prev, [item.id]: Array.isArray(data.records) ? `✓ Downloaded ${data.records.length} rows` : '✓ Downloaded' }));
       }
     } catch (err) {
-      setExportMsg(prev => ({ ...prev, [item.id]: '✓ Live Stream Active' }));
+      setExportMsg(prev => ({ ...prev, [item.id]: 'Export failed' }));
     } finally {
       setExportingId(null);
       setTimeout(() => {
@@ -229,16 +230,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
     try {
       await fetch(`${API_BASE_URL}/api/database/clean`, { method: 'POST' });
       setSummary({ total_products: 0 });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleConnectDemoData = async () => {
-    try {
-      await fetch(`${API_BASE_URL}/api/database/seed`, { method: 'POST' });
-      const sumRes = await fetch(`${API_BASE_URL}/api/control-tower/summary`);
-      if (sumRes.ok) setSummary(await sumRes.json());
     } catch (err) {
       console.error(err);
     }
@@ -641,7 +632,7 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
                       {hasData ? 'Setup Complete' : 'Setup In Progress'}
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
-                      {hasData ? `Backend connected with ${totalProducts} products & ${totalTransactions}!` : 'Connect data sources to complete onboarding.'}
+                      {hasData ? `Backend connected with ${totalProducts ?? '—'} products & ${totalTransactions} of sales history.` : 'Connect data sources to complete onboarding.'}
                     </div>
                     <div style={{ width: '100px', height: '4px', backgroundColor: hasData ? '#10b981' : '#f59e0b', borderRadius: '2px', marginTop: '8px' }} />
                   </div>
@@ -651,7 +642,7 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
                   <div style={{ padding: '10px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <Box size={15} color="#2563eb" />
-                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>Modules Activated (4 of 4)</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>Modules Activated ({Object.values(modules).filter(Boolean).length} of {Object.keys(modules).length})</span>
                     </div>
                     <CheckCircle2 size={16} color="#10b981" />
                   </div>
@@ -668,7 +659,7 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <Server size={15} color="#06b6d4" />
                       <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>
-                        Data Sources ({hasData ? '3 Connected' : '0 Connected'})
+                        Data Sources ({connectedSourcesCount} Connected)
                       </span>
                     </div>
                     <CheckCircle2 size={16} color={hasData ? '#10b981' : '#94a3b8'} />

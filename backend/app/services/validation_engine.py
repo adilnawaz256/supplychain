@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from backend.app.models.models import Product, Inventory, SalesHistory, Supplier, RetailSpace
+from sqlalchemy import func
+from backend.app.models.models import Product, Inventory, SalesHistory, Supplier, SupplierProduct, RetailSpace, Order, OrderItem
 
 class DataValidationEngine:
     """
@@ -17,26 +18,19 @@ class DataValidationEngine:
         supplier_count = self.db.query(Supplier).count()
         space_count = self.db.query(RetailSpace).count()
 
-        # Dynamic Module Readiness Calculations
-        if product_count > 0 and inventory_count > 0:
-            inv_readiness = min(100.0, round((inventory_count / float(product_count * 3)) * 100.0, 1))
-        else:
-            inv_readiness = 0.0
+        # Readiness = share of products that have the data each module needs (real coverage, 0-100%).
+        def coverage(column) -> float:
+            if product_count == 0:
+                return 0.0
+            covered = self.db.query(func.count(func.distinct(column))).scalar() or 0
+            return round(min(100.0, covered * 100.0 / product_count), 1)
 
-        if sales_count > 0:
-            demand_readiness = min(100.0, round((sales_count / 100.0) * 100.0, 1))
-        else:
-            demand_readiness = 0.0
-
-        if supplier_count > 0:
-            proc_readiness = min(100.0, round((supplier_count / 5.0) * 100.0, 1))
-        else:
-            proc_readiness = 0.0
-
-        if product_count > 0 and space_count > 0:
-            assort_readiness = min(100.0, round((space_count / float(product_count)) * 100.0, 1))
-        else:
-            assort_readiness = 0.0
+        inv_readiness = coverage(Inventory.product_id)
+        demand_readiness = coverage(SalesHistory.product_id)
+        proc_readiness = coverage(SupplierProduct.product_id)
+        assort_readiness = coverage(RetailSpace.product_id)
+        order_line_count = self.db.query(OrderItem).count()
+        customer_orders = self.db.query(Order).filter(Order.customer_id.isnot(None)).count()
 
         overall_score = round((inv_readiness + demand_readiness + proc_readiness + assort_readiness) / 4.0, 1)
 
@@ -59,11 +53,11 @@ class DataValidationEngine:
                 "demand_ai": {"readiness_pct": demand_readiness, "status": "READY" if demand_readiness >= 50 else "PENDING_DATA"},
                 "procurement_ai": {"readiness_pct": proc_readiness, "status": "READY" if proc_readiness >= 50 else "PENDING_DATA"},
                 "assortment_ai": {"readiness_pct": assort_readiness, "status": "READY" if assort_readiness >= 50 else "PENDING_DATA"},
-                "pricing_ai": {"readiness_pct": 100.0 if (product_count > 0 and sales_count > 0) else 0.0, "status": "READY" if (product_count > 0 and sales_count > 0) else "PENDING_DATA"},
-                "policy_simulation_ai": {"readiness_pct": inv_readiness, "status": "READY" if inv_readiness >= 50 else "PENDING_DATA"},
-                "customer_ltv_ai": {"readiness_pct": 100.0 if sales_count > 0 else 0.0, "status": "READY" if sales_count > 0 else "PENDING_DATA"},
-                "market_basket_ai": {"readiness_pct": 100.0 if sales_count > 0 else 0.0, "status": "READY" if sales_count > 0 else "PENDING_DATA"},
-                "trade_area_ai": {"readiness_pct": 100.0, "status": "READY"}
+                "pricing_ai": {"readiness_pct": demand_readiness, "status": "READY" if demand_readiness >= 50 else "PENDING_DATA"},
+                "policy_simulation_ai": {"readiness_pct": min(inv_readiness, demand_readiness), "status": "READY" if min(inv_readiness, demand_readiness) >= 50 else "PENDING_DATA"},
+                "customer_ltv_ai": {"readiness_pct": 100.0 if customer_orders > 0 else 0.0, "status": "READY" if customer_orders > 0 else "PENDING_DATA"},
+                "market_basket_ai": {"readiness_pct": 100.0 if order_line_count > 0 else 0.0, "status": "READY" if order_line_count > 0 else "PENDING_DATA"},
+                "trade_area_ai": {"readiness_pct": 0.0, "status": "PENDING_DATA"}
             },
             "dataset_summary": {
                 "products_mapped": product_count,

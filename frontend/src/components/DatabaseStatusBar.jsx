@@ -15,15 +15,13 @@ export default function DatabaseStatusBar({
   connectorStatus,
   onRefresh,
   onOpenGlobalExplainer,
-  onSeedBenchmark,
-  isSeeding,
   isLoading,
   totalProducts = 0,
   totalSales = 0
 }) {
-  const isConnected = connectorStatus?.is_connected ?? true;
-  const dbName = connectorStatus?.connector?.database || 'postgres';
-  const dbHost = connectorStatus?.connector?.host || 'aws-0-ap-southeast-1.pooler.supabase.com';
+  const isConnected = !!connectorStatus?.is_connected;
+  const dbName = connectorStatus?.connector?.database || '—';
+  const dbHost = connectorStatus?.connector?.host || 'no source connected';
 
   return (
     <div style={{
@@ -70,13 +68,13 @@ export default function DatabaseStatusBar({
         {/* Live records counters */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.76rem', color: '#475569' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontWeight: 800, color: '#0f172a' }}>{totalProducts || 20}</span>
+            <span style={{ fontWeight: 800, color: '#0f172a' }}>{Number(totalProducts || 0).toLocaleString()}</span>
             <span style={{ color: '#64748b' }}>Live Products</span>
           </div>
           <span style={{ color: '#cbd5e1' }}>•</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontWeight: 800, color: '#0f172a' }}>{totalSales || '1,086'}</span>
-            <span style={{ color: '#64748b' }}>Sales Tx (90d)</span>
+            <span style={{ fontWeight: 800, color: '#0f172a' }}>{Number(totalSales || 0).toLocaleString()}</span>
+            <span style={{ color: '#64748b' }}>Sales rows</span>
           </div>
           <span style={{ color: '#cbd5e1' }}>•</span>
           <div style={{
@@ -90,7 +88,7 @@ export default function DatabaseStatusBar({
             fontWeight: 700,
             fontSize: '0.7rem'
           }}>
-            <CheckCircle2 size={12} /> Real DB Compute (0 Fallbacks)
+            <CheckCircle2 size={12} /> Computed from database tables
           </div>
         </div>
       </div>
@@ -117,29 +115,6 @@ export default function DatabaseStatusBar({
         >
           <Calculator size={14} color="#7c3aed" />
           <span>Inspect Model Math & Lineage</span>
-        </button>
-
-        <button
-          onClick={onSeedBenchmark}
-          disabled={isSeeding}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '7px 12px',
-            borderRadius: '8px',
-            backgroundColor: isSeeding ? '#f1f5f9' : '#fffbeb',
-            border: '1px solid #fde68a',
-            color: '#b45309',
-            fontSize: '0.76rem',
-            fontWeight: 700,
-            cursor: isSeeding ? 'not-allowed' : 'pointer',
-            transition: 'all 0.15s ease'
-          }}
-          title="Re-seeds the connected PostgreSQL database with realistic 20 SKUs, multi-warehouse stock and 90-day transactions"
-        >
-          <Zap size={14} color="#f59e0b" />
-          <span>{isSeeding ? 'Seeding DB...' : 'Sync Benchmark Data'}</span>
         </button>
 
         <button

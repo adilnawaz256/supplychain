@@ -1,17 +1,49 @@
 """Customer Segmentation & Lifetime Value (LTV) Engine (Module 3).
 
-Analyzes customer purchasing frequency, recency, and monetary contribution (RFM),
-clusters accounts into statistical LTV tiers (Low, Mid, High), and predicts churn
-and retention risk directly from live database transactions.
+Computes per-customer RFM (Recency, Frequency, Monetary) strictly from the
+`customers`, `orders` and `order_items` tables, clusters customers with a real
+K-Means model into Low / Mid / High LTV tiers and evaluates a real Random Forest
+classifier on a held-out split. Nothing is invented: when a value cannot be
+computed from the database it is returned as None (or the item is omitted).
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from collections import defaultdict
+
 import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+
 from backend.app.core.database import SessionLocal
 from backend.app.models.models import Customer, Order, OrderItem
+
+# ---- Business settings (not stored in any table) -----------------------------
+CHURN_RISK_DAYS = 90          # High-LTV customer with recency above this is "at risk"
+N_CLUSTERS = 3                # K-Means clusters -> High / Mid / Low LTV
+KMEANS_N_INIT = 10
+RANDOM_STATE = 0
+CLASSIFIER_TEST_SIZE = 0.25
+MIN_CUSTOMERS_FOR_CLASSIFIER = 30
+MIN_CLASS_MEMBERS_FOR_CLASSIFIER = 2
+RF_N_ESTIMATORS = 200
+MAX_AT_RISK_RETURNED = 8
+MAX_SAMPLE_CUSTOMERS = 20
+
+PRIMARY_ALGORITHM = "K-Means Clustering (k=3, log1p-standardized RFM) + Random Forest RFM Classifier"
+SEGMENT_ORDER = ["High_ltv", "Mid_ltv", "Low_ltv"]
+
+
+def _settings() -> Dict[str, Any]:
+    return {
+        "churn_risk_days": CHURN_RISK_DAYS,
+        "kmeans_clusters": N_CLUSTERS,
+        "kmeans_n_init": KMEANS_N_INIT,
+        "random_state": RANDOM_STATE,
+        "classifier_test_size": CLASSIFIER_TEST_SIZE,
+        "min_customers_for_classifier": MIN_CUSTOMERS_FOR_CLASSIFIER,
+        "min_class_members_for_classifier": MIN_CLASS_MEMBERS_FOR_CLASSIFIER,
+        "random_forest_n_estimators": RF_N_ESTIMATORS,
+    }
 
 
 class CustomerLTVSegmentationEngine:
@@ -23,234 +55,320 @@ class CustomerLTVSegmentationEngine:
     def _get_db(self) -> Session:
         return self.db if self.db is not None else SessionLocal()
 
-    def get_customer_ltv_intelligence(self) -> Dict[str, Any]:
-        """Calculates customer segmentation, RFM matrices, and retention metrics dynamically from live database records."""
-        db = self._get_db()
-        should_close = (self.db is None)
+    # ------------------------------------------------------------------ data
+    def _load_rfm(self, db: Session):
+        """Return (rows, reference_date). rows only include customers that have orders."""
+        orders = (
+            db.query(Order.id, Order.customer_id, Order.order_date, Order.total_amount)
+            .filter(Order.customer_id.isnot(None))
+            .all()
+        )
+        if not orders:
+            return [], None
 
-        try:
-            customers_query = db.query(Customer).all()
-            if not customers_query:
-                return self._empty_response()
-
-            # Query order aggregations per customer
-            order_stats = (
-                db.query(
-                    Order.customer_id,
-                    func.count(Order.id).label("order_count"),
-                    func.max(Order.order_date).label("last_order_date"),
-                    func.sum(Order.total_amount).label("total_spend")
-                )
-                .group_by(Order.customer_id)
+        # Order value from order_items for orders whose total_amount is null/0
+        need_items = [o[0] for o in orders if not o[3]]
+        item_totals: Dict[int, float] = {}
+        if need_items:
+            item_rows = (
+                db.query(OrderItem.order_id, func.sum(OrderItem.total_price))
+                .group_by(OrderItem.order_id)
                 .all()
             )
-            stats_by_cid = {s[0]: s for s in order_stats}
+            item_totals = {oid: float(s or 0.0) for oid, s in item_rows}
 
-            now = datetime.utcnow()
-            raw_customers = []
+        reference_date = max(o[2] for o in orders if o[2] is not None) if any(o[2] for o in orders) else None
 
-            for c in customers_query:
-                st = stats_by_cid.get(c.id)
-                if st:
-                    freq = int(st[1] or 1)
-                    last_dt = st[2] or now
-                    recency = max(0, (now - last_dt).days)
-                    monetary = float(st[3] or 0.0)
+        per_cust: Dict[int, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "last": None, "spend": 0.0})
+        for oid, cid, odate, amount in orders:
+            value = float(amount) if amount else item_totals.get(oid, 0.0)
+            st = per_cust[cid]
+            st["count"] += 1
+            st["spend"] += value
+            if odate is not None and (st["last"] is None or odate > st["last"]):
+                st["last"] = odate
+
+        customers = {c.id: c for c in db.query(Customer.id, Customer.customer_code, Customer.name).all()}
+
+        rows = []
+        for cid, st in per_cust.items():
+            if st["last"] is None or reference_date is None:
+                continue  # recency cannot be computed without an order date
+            c = customers.get(cid)
+            rows.append({
+                "db_id": cid,
+                "customer_id": (c.customer_code if c is not None else None),
+                "name": (c.name if c is not None else None),
+                "recency_days": max(0, (reference_date - st["last"]).days),
+                "frequency_orders": st["count"],
+                "monetary_spend": st["spend"],
+                "last_order_date": st["last"],
+            })
+        return rows, reference_date
+
+    # ------------------------------------------------------------------ main
+    def get_customer_ltv_intelligence(self) -> Dict[str, Any]:
+        """Customer segmentation, RFM and retention metrics computed from live database records."""
+        db = self._get_db()
+        should_close = (self.db is None)
+        try:
+            rows, reference_date = self._load_rfm(db)
+            if not rows:
+                return self._empty_response("No customer orders found in the orders table; nothing to segment.")
+
+            notes: List[str] = []
+            n = len(rows)
+            R = np.array([r["recency_days"] for r in rows], dtype=float)
+            F = np.array([r["frequency_orders"] for r in rows], dtype=float)
+            M = np.array([r["monetary_spend"] for r in rows], dtype=float)
+            X_raw = np.column_stack([R, F, M])
+
+            # RFM tercile scores (P33/P66 cutoffs of the real distribution)
+            p33_r, p66_r = np.percentile(R, [33, 66])
+            p33_f, p66_f = np.percentile(F, [33, 66])
+            p33_m, p66_m = np.percentile(M, [33, 66])
+
+            # ---- K-Means segmentation
+            labels: Optional[List[str]] = None
+            if n >= N_CLUSTERS:
+                from sklearn.cluster import KMeans
+                from sklearn.preprocessing import StandardScaler
+                X_log = np.log1p(np.clip(X_raw, 0, None))
+                X_std = StandardScaler().fit_transform(X_log)
+                n_distinct = len(np.unique(X_std, axis=0))
+                if n_distinct >= N_CLUSTERS:
+                    km = KMeans(n_clusters=N_CLUSTERS, n_init=KMEANS_N_INIT, random_state=RANDOM_STATE)
+                    cl = km.fit_predict(X_std)
+                    means = sorted(((float(M[cl == k].mean()), k) for k in range(N_CLUSTERS)), reverse=True)
+                    cluster_to_seg = {k: SEGMENT_ORDER[i] for i, (_, k) in enumerate(means)}
+                    labels = [cluster_to_seg[int(k)] for k in cl]
                 else:
-                    # Deterministic RFM baseline from customer attributes if orders table is sparse
-                    cid_num = c.id
-                    freq = 1 + (cid_num % 7)
-                    recency = 10 + (cid_num * 17 % 140)
-                    monetary = round(120.0 + (cid_num * 83.5 % 3200.0), 2)
+                    notes.append(f"Only {n_distinct} distinct RFM profiles; K-Means needs at least {N_CLUSTERS}. Segments not computed.")
+            else:
+                notes.append(f"Only {n} customers with orders; K-Means needs at least {N_CLUSTERS}. Segments not computed.")
 
-                raw_customers.append({
-                    "customer_id": c.customer_code or f"CUST-{c.id}",
-                    "name": c.name,
-                    "recency_days": recency,
-                    "frequency_orders": freq,
-                    "monetary_spend": monetary
-                })
+            # ---- Random Forest classifier
+            accuracy_pct: Optional[float] = None
+            confusion_records: List[Dict[str, Any]] = []
+            feature_importances: Optional[Dict[str, float]] = None
+            classifier_eval: Dict[str, Any] = {"evaluated": False}
+            if labels is not None:
+                from collections import Counter
+                counts = Counter(labels)
+                if n < MIN_CUSTOMERS_FOR_CLASSIFIER:
+                    notes.append(f"Classifier not evaluated: {n} customers with orders (< {MIN_CUSTOMERS_FOR_CLASSIFIER} required).")
+                elif min(counts.values()) < MIN_CLASS_MEMBERS_FOR_CLASSIFIER or len(counts) < 2:
+                    notes.append(f"Classifier not evaluated: a segment has fewer than {MIN_CLASS_MEMBERS_FOR_CLASSIFIER} members.")
+                else:
+                    from sklearn.ensemble import RandomForestClassifier
+                    from sklearn.model_selection import train_test_split
+                    from sklearn.metrics import accuracy_score, confusion_matrix
+                    y = np.array(labels)
+                    try:
+                        X_tr, X_te, y_tr, y_te = train_test_split(
+                            X_raw, y, test_size=CLASSIFIER_TEST_SIZE, random_state=RANDOM_STATE, stratify=y)
+                        rf = RandomForestClassifier(n_estimators=RF_N_ESTIMATORS, random_state=RANDOM_STATE)
+                        rf.fit(X_tr, y_tr)
+                        pred = rf.predict(X_te)
+                        accuracy_pct = round(float(accuracy_score(y_te, pred)) * 100, 1)
+                        present = [s for s in SEGMENT_ORDER if s in counts]
+                        cm = confusion_matrix(y_te, pred, labels=present)
+                        for i, a in enumerate(present):
+                            for j, p in enumerate(present):
+                                confusion_records.append({"actual": a, "predicted": p, "count": int(cm[i, j])})
+                        feature_importances = {
+                            name: round(float(v), 4)
+                            for name, v in zip(["recency_days", "frequency_orders", "monetary_spend"], rf.feature_importances_)
+                        }
+                        classifier_eval = {
+                            "evaluated": True,
+                            "train_size": int(len(y_tr)),
+                            "test_size": int(len(y_te)),
+                            "split": f"stratified train/test, test={CLASSIFIER_TEST_SIZE}, random_state={RANDOM_STATE}",
+                            "target": "K-Means segment label",
+                        }
+                    except ValueError as exc:
+                        notes.append(f"Classifier not evaluated: {exc}")
 
-            if not raw_customers:
-                return self._empty_response()
+            # ---- per-customer items
+            customers: List[Dict[str, Any]] = []
+            seg_stats = {s: {"count": 0, "total_spend": 0.0, "recencies": [], "frequencies": []} for s in SEGMENT_ORDER}
+            at_risk: List[Dict[str, Any]] = []
+            ref_str = reference_date.date().isoformat() if hasattr(reference_date, "date") else str(reference_date)
 
-            # Calculate quantile-based RFM scores
-            all_monetary = [c["monetary_spend"] for c in raw_customers]
-            all_freq = [c["frequency_orders"] for c in raw_customers]
-            all_rec = [c["recency_days"] for c in raw_customers]
-
-            p33_m, p66_m = np.percentile(all_monetary, [33, 66]) if len(all_monetary) > 3 else (200, 800)
-            p33_f, p66_f = np.percentile(all_freq, [33, 66]) if len(all_freq) > 3 else (2, 4)
-            p33_r, p66_r = np.percentile(all_rec, [33, 66]) if len(all_rec) > 3 else (30, 75)
-
-            customers = []
-            segment_stats = {
-                "High_ltv": {"count": 0, "total_spend": 0.0, "recencies": [], "frequencies": []},
-                "Mid_ltv": {"count": 0, "total_spend": 0.0, "recencies": [], "frequencies": []},
-                "Low_ltv": {"count": 0, "total_spend": 0.0, "recencies": [], "frequencies": []}
-            }
-            at_risk_vip_customers = []
-
-            for rc in raw_customers:
-                # Recency score: lower recency days = higher score (1-5)
+            for idx, rc in enumerate(rows):
                 r_score = 5 if rc["recency_days"] <= p33_r else (3 if rc["recency_days"] <= p66_r else 1)
-                # Frequency score: higher frequency = higher score
                 f_score = 5 if rc["frequency_orders"] >= p66_f else (3 if rc["frequency_orders"] >= p33_f else 1)
-                # Monetary score: higher spend = higher score
                 m_score = 5 if rc["monetary_spend"] >= p66_m else (3 if rc["monetary_spend"] >= p33_m else 1)
-
-                overall_score = round((r_score + f_score + m_score) / 3.0)
-
-                # Segment based on monetary & overall score
-                if rc["monetary_spend"] >= p66_m:
-                    seg = "High_ltv"
-                elif rc["monetary_spend"] >= p33_m:
-                    seg = "Mid_ltv"
+                overall = round((r_score + f_score + m_score) / 3.0, 2)
+                seg = labels[idx] if labels is not None else None
+                if seg == "High_ltv":
+                    churn_risk = "HIGH" if rc["recency_days"] > CHURN_RISK_DAYS else "LOW"
+                elif seg is not None:
+                    churn_risk = "MEDIUM" if rc["recency_days"] > CHURN_RISK_DAYS else "LOW"
                 else:
-                    seg = "Low_ltv"
-
-                churn_risk = "HIGH" if rc["recency_days"] > 90 and seg in ["High_ltv", "Mid_ltv"] else ("MEDIUM" if rc["recency_days"] > 45 else "LOW")
+                    churn_risk = None
 
                 item = {
                     "customer_id": rc["customer_id"],
+                    "name": rc["name"],
                     "recency_days": rc["recency_days"],
                     "frequency_orders": rc["frequency_orders"],
                     "monetary_spend": round(rc["monetary_spend"], 2),
                     "rfm_recency_score": r_score,
                     "rfm_frequency_score": f_score,
                     "rfm_monetary_score": m_score,
-                    "overall_rfm_score": overall_score,
+                    "overall_rfm_score": overall,
                     "ltv_segment": seg,
                     "churn_risk": churn_risk,
                     "calculation_trace": {
-                        "recency_formula": "Days since latest order date in orders table",
-                        "frequency_formula": "Total completed orders count",
-                        "monetary_formula": "Total spend sum(order.total_amount)",
-                        "rfm_scores": f"Recency={r_score}/5, Frequency={f_score}/5, Monetary={m_score}/5",
+                        "recency_formula": f"Days between customer's last order ({rc['last_order_date'].date().isoformat()}) and latest order date in dataset ({ref_str}) = {rc['recency_days']}",
+                        "frequency_formula": f"Count of orders = {rc['frequency_orders']}",
+                        "monetary_formula": f"Sum of order values (orders.total_amount, or sum(order_items.total_price) when total_amount is null/0) = {round(rc['monetary_spend'], 2)}",
+                        "ltv_definition": "LTV = historical monetary spend (no projection)",
+                        "rfm_scores": f"Recency={r_score}/5, Frequency={f_score}/5, Monetary={m_score}/5 (tercile cutoffs P33/P66 of real distribution)",
                         "composite_score_formula": "Overall RFM = (R + F + M) / 3",
-                        "data_source_tables": "customers (name, customer_code), orders (total_amount, order_date)"
-                    }
+                        "segment_source": "K-Means cluster label" if seg is not None else "Not computed",
+                        "data_source_tables": "customers, orders, order_items",
+                    },
                 }
                 customers.append(item)
+                if seg is not None:
+                    st = seg_stats[seg]
+                    st["count"] += 1
+                    st["total_spend"] += rc["monetary_spend"]
+                    st["recencies"].append(rc["recency_days"])
+                    st["frequencies"].append(rc["frequency_orders"])
+                    if seg == "High_ltv" and rc["recency_days"] > CHURN_RISK_DAYS:
+                        at_risk.append(item)
 
-                segment_stats[seg]["count"] += 1
-                segment_stats[seg]["total_spend"] += rc["monetary_spend"]
-                segment_stats[seg]["recencies"].append(rc["recency_days"])
-                segment_stats[seg]["frequencies"].append(rc["frequency_orders"])
-
-                if seg == "High_ltv" and rc["recency_days"] > 60:
-                    at_risk_vip_customers.append(item)
+            customers.sort(key=lambda c: c["monetary_spend"], reverse=True)
+            at_risk.sort(key=lambda c: c["monetary_spend"], reverse=True)
 
             total_cust = len(customers)
-            total_revenue = sum(c["monetary_spend"] for c in customers)
+            total_revenue = float(M.sum())
 
             color_map = {"High_ltv": "#10b981", "Mid_ltv": "#3b82f6", "Low_ltv": "#94a3b8"}
             action_map = {
-                "High_ltv": "VIP Concierge & Loyalty Priority: Maintain dedicated inventory buffer and early access.",
-                "Mid_ltv": "Upsell & Engagement: Bundle cross-category accessories to graduate to High tier.",
-                "Low_ltv": "Automated Reactivation: Trigger targeted reorder discounts on replenishment items."
+                "High_ltv": "Retain: prioritise service and inventory availability for these accounts.",
+                "Mid_ltv": "Grow: target with cross-sell to increase order frequency and value.",
+                "Low_ltv": "Reactivate: target with replenishment reminders.",
             }
+            segments_rollup: List[Dict[str, Any]] = []
+            if labels is not None:
+                for seg_name in SEGMENT_ORDER:
+                    sd = seg_stats[seg_name]
+                    cnt = sd["count"]
+                    spend = sd["total_spend"]
+                    segments_rollup.append({
+                        "segment": seg_name,
+                        "segment_label": seg_name.replace("_", " ").title(),
+                        "customer_count": cnt,
+                        "customer_share_pct": round(cnt / total_cust * 100, 1) if total_cust else None,
+                        "total_spend": round(spend, 2),
+                        "revenue_share_pct": round(spend / total_revenue * 100, 1) if total_revenue > 0 else None,
+                        "avg_spend_per_customer": round(spend / cnt, 2) if cnt else None,
+                        "avg_recency_days": round(float(np.mean(sd["recencies"])), 1) if sd["recencies"] else None,
+                        "avg_frequency_orders": round(float(np.mean(sd["frequencies"])), 1) if sd["frequencies"] else None,
+                        "color": color_map[seg_name],
+                        "recommended_action": action_map[seg_name],
+                    })
 
-            segments_rollup = []
-            for seg_name, sdata in segment_stats.items():
-                cnt = sdata["count"]
-                spend = sdata["total_spend"]
-                avg_rec = round(float(np.mean(sdata["recencies"])), 1) if sdata["recencies"] else 0.0
-                avg_freq = round(float(np.mean(sdata["frequencies"])), 1) if sdata["frequencies"] else 0.0
-                avg_val = round(spend / max(1, cnt), 2)
-                pct_rev = round((spend / max(1.0, total_revenue)) * 100, 1)
+            high = next((s for s in segments_rollup if s["segment"] == "High_ltv"), None)
+            high_ltv_share = high["revenue_share_pct"] if high else None
 
-                segments_rollup.append({
-                    "segment": seg_name,
-                    "segment_label": seg_name.replace("_", " ").title(),
-                    "customer_count": cnt,
-                    "customer_share_pct": round((cnt / max(1, total_cust)) * 100, 1),
-                    "total_spend": round(spend, 2),
-                    "revenue_share_pct": pct_rev,
-                    "avg_spend_per_customer": avg_val,
-                    "avg_recency_days": avg_rec,
-                    "avg_frequency_orders": avg_freq,
-                    "color": color_map.get(seg_name, "#64748b"),
-                    "recommended_action": action_map.get(seg_name, "")
+            # ---- recommendations (only from computed numbers)
+            recommendations: List[Dict[str, Any]] = []
+            if at_risk:
+                at_risk_spend = sum(c["monetary_spend"] for c in at_risk)
+                share = round(at_risk_spend / total_revenue * 100, 1) if total_revenue > 0 else None
+                recommendations.append({
+                    "title": "Re-engage At-Risk High-LTV Accounts",
+                    "impact": f"{len(at_risk)} accounts, {round(at_risk_spend, 2)} historical spend" + (f" ({share}% of total)" if share is not None else ""),
+                    "details": f"{len(at_risk)} High-LTV customers have not ordered for more than {CHURN_RISK_DAYS} days before {ref_str}.",
+                    "urgency": "HIGH",
                 })
-
-            # Confusion matrix / Classifier performance calculated dynamically
-            confusion_records = [
-                {"Actual": "High_ltv", "Pred_High": 92, "Pred_Mid": 6, "Pred_Low": 2},
-                {"Actual": "Mid_ltv", "Pred_High": 5, "Pred_Mid": 90, "Pred_Low": 5},
-                {"Actual": "Low_ltv", "Pred_High": 1, "Pred_Mid": 4, "Pred_Low": 95}
-            ]
-
-            high_ltv_share = next((s["revenue_share_pct"] for s in segments_rollup if s["segment"] == "High_ltv"), 0.0)
+            if high is not None and high["customer_count"]:
+                recommendations.append({
+                    "title": "Concentration in High-LTV Segment",
+                    "impact": f"{high['customer_share_pct']}% of customers generate {high['revenue_share_pct']}% of spend",
+                    "details": f"{high['customer_count']} High-LTV customers averaging {high['avg_spend_per_customer']} spend and {high['avg_frequency_orders']} orders.",
+                    "urgency": "MEDIUM",
+                })
 
             return {
                 "module_name": "Customer Segmentation & Lifetime Value",
                 "module_key": "customer_ltv",
                 "database_info": {
                     "is_connected": True,
-                    "source": "Connected PostgreSQL Database",
+                    "source": "Connected Database (customers, orders, order_items)",
                     "customers_analyzed": total_cust,
                     "total_portfolio_revenue": round(total_revenue, 2),
-                    "fallback_used": False
+                    "reference_date": ref_str,
+                    "fallback_used": False,
                 },
+                "settings": _settings(),
                 "calculation_trace": {
-                    "methodology": "RFM (Recency, Frequency, Monetary) Quantile Clustering",
-                    "recency_formula": "Days elapsed since the customer's most recent order date",
-                    "frequency_formula": "Total number of completed orders in orders table",
-                    "monetary_formula": "Cumulative revenue spend sum(orders.total_amount)",
-                    "composite_rfm_score": "Overall Score = (R_Score + F_Score + M_Score) / 3",
-                    "segmentation_cutoff": "High-LTV: Score >= 3.5 & Spend > P75; Mid-LTV: Score >= 2.2; Low-LTV: Score < 2.2",
-                    "data_source_tables": "customers (name, customer_code), orders (total_amount, order_date)",
-                    "explanation": "Segmented customer base into behavioral tiers using transactional quantiles to distinguish high-value accounts from churn risks."
+                    "methodology": PRIMARY_ALGORITHM,
+                    "reference_date": f"Latest order_date in orders table: {ref_str}",
+                    "recency_formula": "Days between the customer's last order and the reference date",
+                    "frequency_formula": "Number of orders per customer",
+                    "monetary_formula": "Sum of orders.total_amount (sum(order_items.total_price) when total_amount is null/0)",
+                    "ltv_definition": "LTV = historical monetary spend; no forward projection",
+                    "segmentation": f"K-Means (k={N_CLUSTERS}, n_init={KMEANS_N_INIT}, random_state={RANDOM_STATE}) on standardized log1p(R,F,M); clusters ranked by mean monetary -> High/Mid/Low LTV",
+                    "classifier": "RandomForestClassifier predicting K-Means segment from raw R,F,M",
+                    "classifier_evaluation": classifier_eval,
+                    "feature_importances": feature_importances,
+                    "at_risk_rule": f"High-LTV and recency_days > {CHURN_RISK_DAYS}",
+                    "scope": "Only customers with at least one order are analyzed",
+                    "data_source_tables": "customers (customer_code, name), orders (customer_id, order_date, total_amount), order_items (order_id, total_price)",
+                    "notes": notes,
                 },
                 "summary": {
                     "total_customers_analyzed": total_cust,
                     "total_portfolio_ltv": round(total_revenue, 2),
-                    "avg_customer_ltv": round(total_revenue / max(1, total_cust), 2),
+                    "avg_customer_ltv": round(total_revenue / total_cust, 2) if total_cust else None,
                     "high_ltv_share_pct": high_ltv_share,
-                    "at_risk_vip_count": len(at_risk_vip_customers),
-                    "ml_classifier_accuracy_pct": 96.8,
-                    "primary_algorithm": "K-Means Clustering + Random Forest RFM Classifier"
+                    "at_risk_vip_count": len(at_risk) if labels is not None else None,
+                    "ml_classifier_accuracy_pct": accuracy_pct,
+                    "primary_algorithm": PRIMARY_ALGORITHM,
                 },
                 "segments_rollup": segments_rollup,
-                "at_risk_vip_customers": at_risk_vip_customers[:8],
+                "at_risk_vip_customers": at_risk[:MAX_AT_RISK_RETURNED],
                 "confusion_records": confusion_records,
-                "sample_customers": customers[:20],
-                "recommendations": [
-                    {
-                        "title": "Protect At-Risk High-LTV Accounts Immediately",
-                        "impact": "Preserve 18.2% Repeat Revenue",
-                        "details": f"{len(at_risk_vip_customers)} top-tier accounts have gone >60 days without purchasing. Dispatch account managers with personalized reorder terms.",
-                        "urgency": "HIGH"
-                    },
-                    {
-                        "title": "Automate RFM Scoring Triggers in Marketing & ERP",
-                        "impact": "+12.4% Campaign Conversion",
-                        "details": "Trigger automated replenishment workflows when frequency score breaches the 30-day replenishment window.",
-                        "urgency": "MEDIUM"
-                    }
-                ]
+                "sample_customers": customers[:MAX_SAMPLE_CUSTOMERS],
+                "recommendations": recommendations,
             }
         finally:
             if should_close:
                 db.close()
 
-    def _empty_response(self) -> Dict[str, Any]:
+    def _empty_response(self, note: str = "") -> Dict[str, Any]:
         return {
             "module_name": "Customer Segmentation & Lifetime Value",
             "module_key": "customer_ltv",
+            "database_info": {
+                "is_connected": True,
+                "source": "Connected Database (customers, orders, order_items)",
+                "customers_analyzed": 0,
+                "total_portfolio_revenue": None,
+                "reference_date": None,
+                "fallback_used": False,
+            },
+            "settings": _settings(),
+            "calculation_trace": {"methodology": PRIMARY_ALGORITHM, "notes": [note] if note else []},
             "summary": {
                 "total_customers_analyzed": 0,
-                "total_portfolio_ltv": 0.0,
-                "avg_customer_ltv": 0.0,
-                "high_ltv_share_pct": 0.0,
-                "at_risk_vip_count": 0,
-                "ml_classifier_accuracy_pct": 0.0,
-                "primary_algorithm": "K-Means Clustering + Random Forest RFM Classifier"
+                "total_portfolio_ltv": None,
+                "avg_customer_ltv": None,
+                "high_ltv_share_pct": None,
+                "at_risk_vip_count": None,
+                "ml_classifier_accuracy_pct": None,
+                "primary_algorithm": PRIMARY_ALGORITHM,
             },
             "segments_rollup": [],
             "at_risk_vip_customers": [],
             "confusion_records": [],
             "sample_customers": [],
-            "recommendations": []
+            "recommendations": [],
         }

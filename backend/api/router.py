@@ -14,6 +14,7 @@ from backend.api.routes.integrations import router as integrations_router
 from backend.api.routes.access_control import router as access_control_router
 from backend.api.routes.admin import router as admin_router
 from backend.api.routes.auth import router as auth_router
+from backend.api.routes.insights import router as insights_router
 
 router = APIRouter()
 
@@ -27,3 +28,4 @@ router.include_router(workspaces_router)
 router.include_router(integrations_router)
 router.include_router(access_control_router)
 router.include_router(admin_router)
+router.include_router(insights_router)

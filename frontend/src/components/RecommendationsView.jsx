@@ -47,7 +47,7 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
           type: 'AI_RECOMMENDATION',
           channel: '#alerts-and-insights',
           webhook_url: localStorage.getItem('wisualyst_teams_webhook') || '',
-          data: recObj || { recommendation_id: id, title: 'Approved Prescriptive Action', financial_impact: '$15,000' }
+          data: recObj || { recommendation_id: id, title: 'Approved Prescriptive Action' }
         })
       });
     } catch (err) {
@@ -60,6 +60,7 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
     return r.module === filterModule;
   });
 
+  const hasNumericImpact = recommendations.some(r => typeof r.financial_impact === 'number');
   const totalValue = recommendations.reduce((acc, r) => acc + (typeof r.financial_impact === 'number' ? r.financial_impact : 0), 0);
 
   return (
@@ -95,7 +96,7 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Total Potential ROI Impact</div>
             <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#10b981' }}>
-              ${totalValue.toLocaleString()}
+              {hasNumericImpact ? `$${totalValue.toLocaleString()}` : '—'}
             </div>
           </div>
         </div>
@@ -169,7 +170,7 @@ export default function RecommendationsView({ onOpenSimulationModal }) {
                         backgroundColor: rec.severity === 'critical' ? '#fef2f2' : '#eff6ff',
                         color: rec.severity === 'critical' ? '#ef4444' : '#2563eb'
                       }}>
-                        {rec.severity.toUpperCase()}
+                        {(rec.severity || '—').toUpperCase()}
                       </span>
                       <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
                         ID: {rec.recommendation_id} • SKU: <b>{rec.entity_id}</b>

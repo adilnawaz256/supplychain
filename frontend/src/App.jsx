@@ -38,7 +38,7 @@ export default function App() {
     }
     return 'overview';
   });
-  const [dateRange, setDateRange] = useState('May 12 – May 18, 2024');
+  const [dateRange, setDateRange] = useState('Last 30 Days');
 
   // Modal & Drawer states
   const [isNewRoleModalOpen, setIsNewRoleModalOpen] = useState(false);

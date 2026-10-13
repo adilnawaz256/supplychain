@@ -6,7 +6,7 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hello! I am your Wisualyst AI Decision Assistant powered by ReAct & MCP Tools.\n\nYou can ask me questions like:\n• *'Which products are at risk of stockout in the next 7 days?'*\n• *'Why is SKU-ELEC-101 at risk?'*\n• *'What should we reorder for Bangalore warehouse?'*",
+      text: "Hello! I am your Wisualyst AI Decision Assistant powered by ReAct & MCP Tools.\n\nYou can ask me questions like:\n• *'Which products are at risk of stockout in the next 7 days?'*\n• *'Why are my critical SKUs at risk?'*\n• *'What should we reorder this week?'*",
       tools_used: [],
       reasoning: "System initialized with live database MCP tools."
     }
@@ -63,8 +63,8 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
 
   const samplePrompts = [
     "Which products are at risk of stockout in the next 7 days?",
-    "Why is SKU-ELEC-101 at risk?",
-    "What should we reorder for Bangalore warehouse?"
+    "Why are my critical SKUs at risk?",
+    "What should we reorder this week?"
   ];
 
   return (

@@ -33,13 +33,35 @@ app.add_middleware(
 
 app.include_router(router)
 
+def _add_missing_columns():
+    """create_all() never alters existing tables, so add columns introduced after first deploy."""
+    from sqlalchemy import inspect, text
+    added_columns = {
+        "workspace_pipeline_configs": {"ingestion_history": "JSON"},
+        "sales_history": {"source_key": "VARCHAR(40)"},
+    }
+    inspector = inspect(engine)
+    for table, cols in added_columns.items():
+        if not inspector.has_table(table):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table)}
+        for col, col_type in cols.items():
+            if col not in existing:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+    with engine.begin() as conn:
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_sales_history_source_key ON sales_history (source_key)"))
+
 @app.on_event("startup")
 def startup_event():
     print(f"Starting {settings.PROJECT_NAME} Backend...")
     try:
         Base.metadata.create_all(bind=engine)
+        _add_missing_columns()
+        from backend.app.services.jobs import mark_interrupted_jobs
         db = SessionLocal()
         try:
+            mark_interrupted_jobs(db)
             user_count = db.query(User).count()
             print(f"Database initialized. Contains {user_count} registered users.")
         finally:

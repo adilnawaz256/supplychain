@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 from backend.app.models.models import SalesHistory, Product, Warehouse, ProductForecast
+from backend.ml.forecasting.daily_model import build_daily_series, fit, predict, backtest, DOW_NAMES
+
+MODEL_NAME = "Exponential Smoothing + Day-of-Week Seasonality / Croston"
 
 # In-memory fast cache to ensure <2ms response times during live retail demos
 FORECAST_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -26,25 +29,24 @@ class StatisticalForecastEngine:
 
         wh_id = warehouse_id or 0
         product = self.db.query(Product).filter(Product.id == product_id).first() if product_id else None
-        if not product:
-            product = self.db.query(Product).first()
-            if product:
-                product_id = product.id
+        if product_id and not product:
+            raise ValueError(f"Product {product_id} not found")
         if not product:
             return {
                 "product_id": product_id,
-                "sku": "N/A",
-                "product_name": "No Product Selected",
+                "sku": None,
+                "product_name": None,
                 "warehouse_id": wh_id,
-                "warehouse_name": "N/A",
+                "warehouse_name": None,
                 "horizon_days": horizon_days,
-                "total_forecasted_demand": 0.0,
+                "total_forecasted_demand": None,
                 "confidence_interval_pct": 95.0,
-                "mae": 0.0,
-                "rmse": 0.0,
+                "mae": None,
+                "rmse": None,
+                "accuracy_pct": None,
                 "forecast_data": [],
                 "historical_points": [],
-                "model_name": "Statistical ML / Croston Intermittent Model"
+                "model_name": MODEL_NAME
             }
 
         warehouse_name = "All Warehouses"
@@ -54,124 +56,80 @@ class StatisticalForecastEngine:
                 warehouse_name = wh.name
 
         today = datetime.utcnow().date()
-        today_str = today.strftime("%Y-%m-%d")
 
-        # 2. Check persistent database storage in product_forecasts table
-        try:
-            stored = self.db.query(ProductForecast).filter(
-                ProductForecast.product_id == product_id,
-                ProductForecast.warehouse_id == wh_id,
-                ProductForecast.horizon_days == horizon_days
-            ).first()
+        stored = self.db.query(ProductForecast).filter(
+            ProductForecast.product_id == product_id,
+            ProductForecast.warehouse_id == wh_id,
+            ProductForecast.horizon_days == horizon_days
+        ).first()
 
-            if stored and stored.forecast_data:
-                # Check if stored forecast is current (anchor date is today or tomorrow)
-                first_date = stored.forecast_data[0].get("date", "")
-                if first_date >= today_str:
-                    res_data = {
-                        "product_id": product.id,
-                        "sku": product.sku,
-                        "product_name": product.name,
-                        "warehouse_id": wh_id,
-                        "warehouse_name": warehouse_name,
-                        "horizon_days": horizon_days,
-                        "total_forecasted_demand": round(float(stored.total_forecasted_demand), 1),
-                        "confidence_interval_pct": float(stored.confidence_interval_pct or 95.0),
-                        "mae": round(float(stored.mae or 1.8), 2),
-                        "rmse": round(float(stored.rmse or 2.5), 2),
-                        "forecast_data": stored.forecast_data,
-                        "historical_points": stored.historical_points or [],
-                        "model_name": stored.model_name or "Statistical ML / Croston Intermittent Model",
-                        "database_info": {
-                            "is_connected": True,
-                            "source": "Connected PostgreSQL Database",
-                            "product_sku": product.sku,
-                            "fallback_used": False
-                        },
-                        "calculation_trace": {
-                            "model": stored.model_name or "Statistical ML / Croston Intermittent Model",
-                            "formula": "Holt-Winters / Croston: y_hat_(t+h) = level_t + h * trend_t + season_(t+h)",
-                            "confidence_interval_formula": "[Forecast - 1.96 * RMSE, Forecast + 1.96 * RMSE] (95% CI)",
-                            "data_source_tables": "sales_history (quantity_sold, date), products (lead_time_days, reorder_point)",
-                            "explanation": "Calculated dynamic 14-30 day demand trajectory from actual sales velocity with 95% Croston confidence interval."
-                        }
-                    }
-                    FORECAST_CACHE[cache_key] = {"timestamp": now, "data": res_data}
-                    return res_data
-        except Exception as e:
-            # Fallback smoothly if table is momentarily busy
-            pass
-
-        # 3. Calculate high-fidelity retail forecast from sales history + inventory dynamics
-        query = self.db.query(SalesHistory).filter(SalesHistory.product_id == product_id)
+        # 3. Train on the product's real daily sales and forecast forward
+        query = self.db.query(SalesHistory.date, SalesHistory.quantity_sold).filter(SalesHistory.product_id == product_id)
         if warehouse_id:
             query = query.filter(SalesHistory.warehouse_id == warehouse_id)
-        records = query.order_by(SalesHistory.date.asc()).all()
+        series = build_daily_series(query.all())
 
-        # Operational daily velocity from reorder point and lead time
-        lead_time = max(1, int(product.lead_time_days or 14))
-        rop = float(product.reorder_point or 25)
-        rop_daily = rop / lead_time
+        if not series:
+            # No sales rows yet: nothing to learn from, so no forecast is made.
+            return {
+                "product_id": product.id,
+                "sku": product.sku,
+                "product_name": product.name,
+                "warehouse_id": wh_id,
+                "warehouse_name": warehouse_name,
+                "horizon_days": horizon_days,
+                "total_forecasted_demand": None,
+                "confidence_interval_pct": 95.0,
+                "mae": None,
+                "rmse": None,
+                "accuracy_pct": None,
+                "forecast_data": [],
+                "historical_points": [],
+                "model_name": MODEL_NAME,
+                "database_info": {
+                    "is_connected": True,
+                    "source": "Internal database (sales_history)",
+                    "product_sku": product.sku,
+                    "sales_records_used": 0,
+                    "fallback_used": False
+                },
+                "calculation_trace": {
+                    "model": MODEL_NAME,
+                    "historical_days_evaluated": 0,
+                    "data_source_tables": "sales_history (date, quantity_sold)",
+                    "explanation": "No sales history for this product yet, so no forecast can be calculated."
+                }
+            }
 
-        # Sales transaction demand velocity
-        if records and len(records) >= 3:
-            total_qty = sum(float(r.quantity_sold or 0) for r in records)
-            avg_per_tx = total_qty / len(records)
-            # Balanced blend: 50% operational inventory velocity, 50% historical transaction velocity
-            base_daily = round(0.5 * rop_daily + 0.5 * avg_per_tx, 1)
-            quantities = [float(r.quantity_sold or 0) for r in records]
-            std_dev = float(np.std(quantities)) if len(quantities) > 1 else max(2.0, base_daily * 0.25)
-            # Bound std_dev to realistic operational buffer (15% - 40% of daily demand)
-            std_dev = min(max(1.8, std_dev * 0.35), base_daily * 0.40)
+        model = fit(series)
+        bt = backtest(series)
+        data_note = (
+            f"Learned from {model['days_used']} days of real sales "
+            f"({series[0]['date']} to {series[-1]['date']}, {round(model['total_units'])} units sold)."
+        )
+
+        forecast_points = predict(model, today + timedelta(days=1), horizon_days)
+        total_demand = sum(p["forecasted_demand"] for p in forecast_points)
+        historical_points = [
+            {"date": p["date"].strftime("%Y-%m-%d"), "actual_demand": round(p["qty"], 1)}
+            for p in series[-14:]
+        ]
+
+        mae = bt["mae"] if bt else None
+        rmse = bt["rmse"] if bt else None
+        accuracy_pct = bt["accuracy_pct"] if bt else None
+        model_name = MODEL_NAME
+        busiest = max(range(7), key=lambda i: model["dow_factors"][i])
+        if model.get("method") == "croston":
+            pattern_note = (
+                f"This product sells on only {round((1 - model['zero_day_share']) * 100)}% of days, so we use Croston's method: "
+                f"smoothed sale size / smoothed days between sales = about {round(model['level'], 1)} units/day on average."
+            )
         else:
-            base_daily = max(2.0, round(rop_daily, 1))
-            std_dev = max(1.8, round(base_daily * 0.25, 1))
-
-        base_daily = max(2.0, base_daily)
-
-        # Retail day-of-week demand multipliers (Thu/Fri/Sat/Sun shopping uplift)
-        # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
-        dow_weights = {0: 0.90, 1: 0.94, 2: 0.98, 3: 1.06, 4: 1.22, 5: 1.25, 6: 1.05}
-
-        # Generate trailing 7-day actual history (for forecast vs actual comparison ribbon)
-        historical_points = []
-        for h in range(7, 0, -1):
-            h_date = today - timedelta(days=h)
-            h_dow = h_date.weekday()
-            # Natural empirical variance around true sales velocity
-            h_factor = 0.91 + ((h * 11 + product.id) % 7) * 0.028
-            h_val = round(base_daily * dow_weights.get(h_dow, 1.0) * h_factor, 1)
-            historical_points.append({
-                "date": h_date.strftime("%Y-%m-%d"),
-                "actual_demand": h_val
-            })
-
-        # Generate future horizon points anchored to current active calendar
-        forecast_points = []
-        total_demand = 0.0
-        for d in range(1, horizon_days + 1):
-            f_date = today + timedelta(days=d)
-            f_dow = f_date.weekday()
-            # Smooth macro-trend wave (+/- 4% realistic cyclical variation)
-            wave = 1.0 + 0.04 * np.sin((d / 7.0) * 2 * np.pi)
-            f_val = round(base_daily * dow_weights.get(f_dow, 1.0) * wave, 1)
-
-            # 95% Confidence interval calculation
-            margin = round(1.96 * max(1.2, std_dev), 1)
-            lower_b = max(1.0, round(f_val - margin, 1))
-            upper_b = round(f_val + margin, 1)
-
-            total_demand += f_val
-            forecast_points.append({
-                "date": f_date.strftime("%Y-%m-%d"),
-                "forecasted_demand": f_val,
-                "lower_bound": lower_b,
-                "upper_bound": upper_b
-            })
-
-        mae = round(max(1.2, std_dev * 0.22), 2)
-        rmse = round(max(1.7, std_dev * 0.31), 2)
-        model_name = "Statistical ML / Croston Intermittent Model"
+            pattern_note = (
+                f"Typical day now is about {round(model['level'], 1)} units; "
+                f"{DOW_NAMES[busiest]} is the busiest weekday (x{round(model['dow_factors'][busiest], 2)})."
+            )
 
         result = {
             "product_id": product.id,
@@ -184,24 +142,36 @@ class StatisticalForecastEngine:
             "confidence_interval_pct": 95.0,
             "mae": mae,
             "rmse": rmse,
+            "accuracy_pct": accuracy_pct,
             "forecast_data": forecast_points,
             "historical_points": historical_points,
             "model_name": model_name,
             "database_info": {
                 "is_connected": True,
-                "source": "Connected PostgreSQL Database",
+                "source": "Internal database (sales_history)",
                 "product_sku": product.sku,
-                "sales_records_used": len(records),
+                "sales_records_used": model["days_used"],
                 "fallback_used": False
             },
             "calculation_trace": {
                 "model": model_name,
-                "historical_days_evaluated": len(records),
-                "daily_mean_demand": round(float(mean_sales), 2) if 'mean_sales' in locals() else rop_daily,
-                "daily_std_dev": round(float(std_dev), 2) if 'std_dev' in locals() else 1.5,
-                "formula": "Holt-Winters / Croston: y_hat_(t+h) = level_t + h * trend_t + season_(t+h)",
-                "confidence_interval_formula": "[Forecast - 1.96 * RMSE, Forecast + 1.96 * RMSE] (95% CI)",
-                "data_source_tables": "sales_history (quantity_sold, date), products (lead_time_days, reorder_point)"
+                "historical_days_evaluated": model["days_used"],
+                "daily_mean_demand": round(model["overall_mean"], 2),
+                "smoothed_level": round(model["level"], 2),
+                "daily_std_dev": round(model["std"], 2),
+                "day_of_week_factors": {DOW_NAMES[i]: round(f, 2) for i, f in enumerate(model["dow_factors"])},
+                "backtest": bt,
+                "method": model.get("method"),
+                "formula": ("Croston/SBA: daily rate = 0.85 x smoothed sale size / smoothed days between sales"
+                            if model.get("method") == "croston" else
+                            "forecast(day) = smoothed level x day-of-week factor; level_t = 0.3 x demand_t + 0.7 x level_(t-1)"),
+                "confidence_interval_formula": "forecast +/- 1.96 x std of past errors (95% band)",
+                "data_source_tables": "sales_history (date, quantity_sold), products (sku, name)",
+                "explanation": (
+                    f"{data_note} {pattern_note} "
+                    + (f"When we hid the last {bt['holdout_days']} days and predicted their total, we were {accuracy_pct}% accurate." if accuracy_pct is not None
+                       else "Not enough history yet (need 21+ days) to measure accuracy.")
+                )
             }
         }
 

@@ -14,7 +14,7 @@ import {
 export default function HeaderBar({
   title,
   subtitle,
-  dateRange = 'May 12 – May 18, 2024',
+  dateRange = 'Last 30 Days',
   onDateChange,
   showFilters = true,
   onFilterClick,
@@ -25,18 +25,14 @@ export default function HeaderBar({
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState(dateRange);
 
-  const notifications = [
-    { id: 1, type: 'warning', title: 'High stockout risk for SKU B23', desc: '5 locations affected across West Region', time: '10m ago' },
-    { id: 2, type: 'info', title: 'Supplier ABC OTIF drop', desc: 'OTIF fell below 85% threshold', time: '42m ago' },
-    { id: 3, type: 'success', title: 'Data Ingestion Complete', desc: '5.2M records synced from PostgreSQL & Zoho', time: '2h ago' },
-  ];
+  // No demo notifications: list stays empty until a real notifications feed is wired in
+  const notifications = [];
 
   const dateOptions = [
-    'May 12 – May 18, 2024',
     'Last 7 Days',
     'Last 30 Days',
-    'Current Quarter (Q2 2024)',
-    'Year to Date (2024)'
+    'Current Quarter',
+    'Year to Date'
   ];
 
   return (
@@ -198,7 +194,7 @@ export default function HeaderBar({
           >
             <Bell size={18} color="#475569" />
             {/* Red Badge Dot */}
-            <span style={{
+            {notifications.length > 0 && <span style={{
               position: 'absolute',
               top: '7px',
               right: '8px',
@@ -207,7 +203,7 @@ export default function HeaderBar({
               borderRadius: '50%',
               backgroundColor: '#ef4444',
               border: '1.5px solid #ffffff'
-            }} />
+            }} />}
           </button>
 
           {/* Notifications Dropdown */}
@@ -236,6 +232,9 @@ export default function HeaderBar({
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {notifications.length === 0 && (
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>No notifications yet.</div>
+                )}
                 {notifications.map(n => (
                   <div key={n.id} style={{
                     padding: '10px 12px',
