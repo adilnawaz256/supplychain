@@ -170,7 +170,18 @@ def wipe(engine, tables) -> None:
     print(f"Wiped {len(tables)} tables: {', '.join(tables)}")
 
 
+def _count(engine, name: str) -> int:
+    with engine.connect() as conn:
+        return conn.execute(text(f"SELECT COUNT(*) FROM {name}")).scalar()
+
+
 def insert(engine, name: str, df: pd.DataFrame) -> None:
+    """Insert in batches, committing each one, retrying a batch on a dropped connection.
+
+    A table that already holds exactly these rows is skipped and a partly loaded one is emptied
+    first, so the loader can simply be re-run after a network failure.
+    """
+    from sqlalchemy.exc import InterfaceError, OperationalError
     from backend.app.core.database import Base
     table = Base.metadata.tables[name]
     df = df.astype(object).where(pd.notna(df), None)
@@ -181,11 +192,29 @@ def insert(engine, name: str, df: pd.DataFrame) -> None:
                 r[k] = v.item()
             elif isinstance(v, pd.Timestamp):
                 r[k] = v.to_pydatetime()
+    existing = _count(engine, name)
+    if existing == len(records):
+        print(f"  {name}: already loaded ({existing:,} rows), skipped")
+        return
+    if existing:
+        with engine.begin() as conn:
+            conn.execute(text(f"DELETE FROM {name}"))
+        print(f"  {name}: removed {existing:,} rows from a partial load")
     t0 = time.time()
-    with engine.begin() as conn:
-        for i in range(0, len(records), BATCH):
-            conn.execute(table.insert().values(records[i:i + BATCH]))
-        if engine.dialect.name == "postgresql" and "id" in df.columns:
+    for i in range(0, len(records), BATCH):
+        for attempt in range(1, 6):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(table.insert().values(records[i:i + BATCH]))
+                break
+            except (InterfaceError, OperationalError):
+                print(f"    connection dropped at row {i:,} (attempt {attempt}), retrying")
+                engine.dispose()
+                time.sleep(2 * attempt)
+        else:
+            raise RuntimeError(f"{name}: gave up at row {i:,}")
+    if engine.dialect.name == "postgresql" and "id" in df.columns:
+        with engine.begin() as conn:
             conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{name}', 'id'), (SELECT MAX(id) FROM {name}))"))
     print(f"  {name}: {len(records):,} rows ({time.time() - t0:.1f}s)")
 
