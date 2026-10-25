@@ -36,6 +36,7 @@ def reset_ml_caches(db: Session) -> None:
 def _sources() -> List[Tuple[str, str, Callable[[Session], Any]]]:
     from backend.app.services.services import SupplyChainService
     from backend.api.routes.insights import compute_home_insights
+    from backend.ml.intelligences import snapshot_sources as intelligence_sources
 
     def svc(db):
         return SupplyChainService(db)
@@ -52,6 +53,7 @@ def _sources() -> List[Tuple[str, str, Callable[[Session], Any]]]:
         ("module_market_basket", "Bought together", lambda db: svc(db).get_market_basket()),
         ("module_trade_area", "Store catchment", lambda db: svc(db).get_trade_area()),
         ("insights_home", "Home dashboard answers", compute_home_insights),
+        *intelligence_sources(),
     ]
 
 
@@ -76,6 +78,11 @@ def get_or_compute(db: Session, key: str) -> Tuple[Any, Optional[datetime.dateti
     snap = db.query(MLResultSnapshot).filter(MLResultSnapshot.key == key).first()
     if snap and snap.payload is not None:
         return snap.payload, snap.computed_at
+    return recompute(db, key)
+
+
+def recompute(db: Session, key: str) -> Tuple[Any, Optional[datetime.datetime]]:
+    """Calculate one saved result now and store it."""
     fn = dict((k, f) for k, _, f in _sources())[key]
     t0 = time.time()
     payload = fn(db)

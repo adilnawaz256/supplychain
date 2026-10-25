@@ -132,8 +132,55 @@ class Product(Base):
     lead_time_days = Column(Integer, nullable=False, default=7)
     safety_stock_min = Column(Integer, nullable=False, default=10)
     reorder_point = Column(Integer, nullable=False, default=20)
+    # Planning and supply-risk inputs (filled by the retail dataset loader; empty for other imports)
+    subcategory = Column(String(100), nullable=True)
+    lead_time_sd_days = Column(Float, nullable=True)
+    ordering_cost = Column(Float, nullable=True)
+    holding_rate = Column(Float, nullable=True)
+    availability_risk = Column(Float, nullable=True)
+    supplier_count_risk = Column(Float, nullable=True)
+    standardization_risk = Column(Float, nullable=True)
+    price_volatility_risk = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class TradeArea(Base):
+    """A customer catchment area (one per country in the retail dataset) with its market size."""
+    __tablename__ = "trade_areas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(20), nullable=False, unique=True, index=True)
+    country = Column(String(100), nullable=False)
+    population = Column(Integer, nullable=True)
+    households = Column(Integer, nullable=True)
+    expenditure_per_household = Column(Float, nullable=True)
+    market_potential = Column(Float, nullable=True)
+    growth_rate = Column(Float, nullable=True)
+    competition_index = Column(Float, nullable=True)
+
+class TradeAreaStore(Base):
+    """A store competing for the trade areas; attractiveness drives the Huff model."""
+    __tablename__ = "trade_area_stores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(20), nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    size_sqft = Column(Integer, nullable=True)
+    parking_spaces = Column(Integer, nullable=True)
+    highways = Column(Integer, nullable=True)
+    traffic = Column(Integer, nullable=True)
+    accessibility = Column(Integer, nullable=True)
+    design = Column(Integer, nullable=True)
+    business_communities = Column(Integer, nullable=True)
+    attractiveness = Column(Float, nullable=True)
+
+class TradeAreaDistance(Base):
+    __tablename__ = "trade_area_distances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trade_area_code = Column(String(20), nullable=False, index=True)
+    store_code = Column(String(20), nullable=False, index=True)
+    distance = Column(Float, nullable=False)
 
 class Warehouse(Base):
     __tablename__ = "warehouses"

@@ -79,6 +79,16 @@ Generates 50+ products, 3 warehouses, suppliers, 180 days of daily sales, stocko
 python database/seeds/seed_db.py
 ```
 
+**Or load the retail dataset** (`Data.xlsx` + `Trade_Area_Synthetic_Inputs.xlsx` from
+[ahmedkhancgt/supply-chain](https://github.com/ahmedkhancgt/supply-chain/tree/claude/python-file-review-ikw2q4/data)).
+It cleans the 140,000 rows to 139,953 the same way the original analysis scripts do and loads products, suppliers,
+countries (as warehouses), customers, invoices (orders + order lines), sales and the trade-area inputs.
+`--wipe` first deletes all business data and saved ML results but keeps users, roles and settings:
+```bash
+python backend/database/seeds/load_retail_dataset.py --data-dir data --download --wipe
+```
+The 9 intelligences on the Intelligence tab (`GET /api/intelligences/{id}`) are recalculated from whatever is in the database.
+
 ### 4. Start FastAPI Backend & MCP Services
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload

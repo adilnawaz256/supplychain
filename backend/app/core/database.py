@@ -39,3 +39,25 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def add_missing_columns(target_engine):
+    """create_all() never alters existing tables, so add columns introduced after first deploy."""
+    from sqlalchemy import inspect, text
+    added_columns = {
+        "workspace_pipeline_configs": {"ingestion_history": "JSON"},
+        "sales_history": {"source_key": "VARCHAR(40)"},
+        "products": {"subcategory": "VARCHAR(100)", "lead_time_sd_days": "FLOAT", "ordering_cost": "FLOAT",
+                     "holding_rate": "FLOAT", "availability_risk": "FLOAT", "supplier_count_risk": "FLOAT",
+                     "standardization_risk": "FLOAT", "price_volatility_risk": "FLOAT"},
+    }
+    inspector = inspect(target_engine)
+    for table, cols in added_columns.items():
+        if not inspector.has_table(table):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table)}
+        for col, col_type in cols.items():
+            if col not in existing:
+                with target_engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+    with target_engine.begin() as conn:
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_sales_history_source_key ON sales_history (source_key)"))

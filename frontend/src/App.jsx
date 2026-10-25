@@ -7,7 +7,7 @@ import WorkspacesView from './components/WorkspacesView';
 import DataSourcesView from './components/DataSourcesView';
 import AlertsView from './components/AlertsView';
 import AccessControlView from './components/AccessControlView';
-import IntelligenceEnginesView from './components/IntelligenceEnginesView';
+import IntelligenceSuiteView from './components/IntelligenceSuiteView';
 import RecommendationsView from './components/RecommendationsView';
 import DashboardView from './components/DashboardView';
 import BIIntegrationsPanel from './components/BIIntegrationsPanel';
@@ -127,7 +127,7 @@ export default function App() {
       case 'intelligence':
         return {
           title: 'Intelligence Engines',
-          subtitle: 'Autonomous forecasting, multi-echelon inventory, and procurement optimization models.',
+          subtitle: '9 supply-chain intelligences calculated from your imported data: input → algorithm → output.',
           showFilters: true
         };
       case 'recommendations':
@@ -284,7 +284,7 @@ export default function App() {
           )}
 
           {activeTab === 'intelligence' && (
-            <IntelligenceEnginesView />
+            <IntelligenceSuiteView />
           )}
 
           {activeTab === 'recommendations' && (
