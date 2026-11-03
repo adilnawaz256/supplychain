@@ -1,7 +1,10 @@
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from backend.app.models.models import Product, Inventory, SalesHistory, Supplier, SupplierProduct, RetailSpace, Order, OrderItem
+from backend.app.models.models import (
+    Product, Inventory, SalesHistory, Supplier, SupplierProduct, RetailSpace, Order, OrderItem,
+    TradeArea, TradeAreaStore, TradeAreaDistance,
+)
 
 class DataValidationEngine:
     """
@@ -32,6 +35,13 @@ class DataValidationEngine:
         order_line_count = self.db.query(OrderItem).count()
         customer_orders = self.db.query(Order).filter(Order.customer_id.isnot(None)).count()
 
+        try:
+            has_trade_area = all(self.db.query(m).first() is not None
+                                 for m in (TradeArea, TradeAreaStore, TradeAreaDistance))
+        except Exception:  # tables not created yet on this database
+            self.db.rollback()
+            has_trade_area = False
+
         overall_score = round((inv_readiness + demand_readiness + proc_readiness + assort_readiness) / 4.0, 1)
 
         quality_checks = []
@@ -57,7 +67,7 @@ class DataValidationEngine:
                 "policy_simulation_ai": {"readiness_pct": min(inv_readiness, demand_readiness), "status": "READY" if min(inv_readiness, demand_readiness) >= 50 else "PENDING_DATA"},
                 "customer_ltv_ai": {"readiness_pct": 100.0 if customer_orders > 0 else 0.0, "status": "READY" if customer_orders > 0 else "PENDING_DATA"},
                 "market_basket_ai": {"readiness_pct": 100.0 if order_line_count > 0 else 0.0, "status": "READY" if order_line_count > 0 else "PENDING_DATA"},
-                "trade_area_ai": {"readiness_pct": 0.0, "status": "PENDING_DATA"}
+                "trade_area_ai": {"readiness_pct": 100.0 if has_trade_area else 0.0, "status": "READY" if has_trade_area else "PENDING_DATA"}
             },
             "dataset_summary": {
                 "products_mapped": product_count,

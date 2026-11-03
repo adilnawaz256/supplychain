@@ -357,13 +357,20 @@ def _trade_area(service: SupplyChainService) -> Dict[str, Any]:
             "answer": t.get("message") or "Needs territory and distance data that your database doesn't have yet.",
             "steps": [str(m) if not isinstance(m, dict) else (m.get("description") or m.get("name") or str(m)) for m in missing],
         }
+    leader = s.get("top_capture_store") or s.get("highest_attractiveness_store")
+    top = next((x for x in t.get("store_capture_distribution") or [] if x.get("store_name") == leader), None)
+    share = top.get("market_share_pct") if top else None
     return {
-        "headline": str(s.get("highest_attractiveness_store") or "—"),
-        "metric_label": "most attractive location",
-        "secondary": None,
-        "answer": f"{s.get('highest_attractiveness_store')} pulls the most shoppers out of {s.get('competing_stores_count', 0)} sites.",
-        "steps": ["Huff gravity model: the chance a shopper goes to a store = its attractiveness / distance squared, compared with all other stores."],
-        "trust": "real",
+        "headline": str(leader or "—"),
+        "metric_label": "captures the most shoppers",
+        "secondary": f"{share}% of market potential" if share is not None else None,
+        "answer": (f"{leader} pulls the most shoppers out of {s.get('competing_stores_count', 0)} sites"
+                   + (f", an expected {share}% of the market potential across {s.get('trade_areas_count', 0)} trade areas." if share is not None else ".")),
+        "steps": ["Huff gravity model: the chance a shopper goes to a store = its attractiveness / distance squared, compared with all other stores.",
+                  "Expected capture = that chance x each trade area's market potential, summed over all areas.",
+                  "Expected capture is a model result, not observed store visits."],
+        "trust": "partly_assumed",
+        "assumption_note": "store attributes, distances and market potential come from the trade-area input file.",
     }
 
 
