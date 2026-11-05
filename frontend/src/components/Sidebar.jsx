@@ -14,7 +14,7 @@ import {
   Settings,
   Sparkles,
   Layers,
-  Terminal
+  Share2
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpenAuth }) {
@@ -29,7 +29,7 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
     { id: 'recommendations', label: 'Recommendations', icon: FileText },
     { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'mcp', label: 'MCP Server Bridge', icon: Terminal },
+    { id: 'bi', label: 'BI Integrations', icon: Share2 },
   ];
 
   const userInitials = user?.user_metadata?.full_name

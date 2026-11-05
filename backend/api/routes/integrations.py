@@ -193,22 +193,6 @@ def microsoft_oauth_disconnect(db: Session = Depends(get_db)):
     ACTIVE_MICROSOFT_SESSIONS.clear()
     return {"status": "SUCCESS", "message": "Microsoft Teams disconnected successfully"}
 
-# --- MCP Server Integration ---
-@router.get("/api/mcp/tools", tags=["MCP Server Integration"])
-def get_mcp_tools(db: Session = Depends(get_db)):
-    from mcp.tools import MCPToolRegistry
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    server_path = os.path.join(base_dir, "mcp", "server.py")
-    registry = MCPToolRegistry(db)
-    return {
-        "status": "ONLINE",
-        "mcp_version": "2024-11-05",
-        "transport": "JSON-RPC stdio",
-        "server_path": server_path,
-        "base_dir": base_dir,
-        "tools": registry.get_tool_definitions()
-    }
-
 # --- BI Integration Adapters ---
 @router.get("/api/bi/export", tags=["BI Integration"])
 @router.get("/api/bi/powerbi", tags=["BI Integration"])

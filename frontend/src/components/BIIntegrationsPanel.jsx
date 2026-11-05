@@ -1,121 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Download, ExternalLink, Database, FileSpreadsheet, CheckCircle2, Cpu, Copy, Check, Terminal, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { Download, ExternalLink, Database, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
 
 export default function BIIntegrationsPanel() {
   const [downloaded, setDownloaded] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [mcpData, setMcpData] = useState(null);
-
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/mcp/tools`)
-      .then(res => res.json())
-      .then(d => setMcpData(d))
-      .catch(() => console.log("MCP fetch offline"));
-  }, []);
 
   const handleDownloadCsv = () => {
     window.open(`${API_BASE_URL}/api/bi/google-sheets`, '_blank');
     setDownloaded(true);
   };
 
-  const serverPath = mcpData?.server_path || "mcp/server.py";
-  const baseDir = mcpData?.base_dir || ".";
-
-  const mcpConfigSnippet = `{
-  "mcpServers": {
-    "wisualyst-supplychain": {
-      "command": "python",
-      "args": [
-        "${serverPath}"
-      ],
-      "cwd": "${baseDir}",
-      "env": {
-        "PYTHONPATH": "${baseDir}"
-      }
-    }
-  }
-}`;
-
-  const handleCopyConfig = () => {
-    navigator.clipboard.writeText(mcpConfigSnippet);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
-      {/* 1. MCP SERVER CONNECTION PANEL */}
-      <div className="glass-panel" style={{ padding: '24px', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '12px', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8' }}>
-              <Cpu size={26} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h3 style={{ fontSize: '1.25rem', color: '#f8fafc', margin: 0 }}>Model Context Protocol (MCP) Server</h3>
-                <span className="badge badge-success">ONLINE</span>
-              </div>
-              <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-                Connect Antigravity IDE, Claude Desktop, Cursor, or custom LLM agents to Wisualyst AI Decision Engines.
-              </p>
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.85rem', color: '#818cf8', fontWeight: 700 }}>Protocol: JSON-RPC stdio</div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Registered Tools: {mcpData?.tools ? mcpData.tools.length : '—'}</div>
-          </div>
-        </div>
-
-        {/* MCP Configuration Snippet */}
-        <div style={{ background: '#0f172a', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Terminal size={14} color="#818cf8" /> Client Connection Config (Dynamically Detected for current host)
-            </span>
-            <button 
-              onClick={handleCopyConfig} 
-              style={{
-                padding: '6px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.08)', 
-                border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer',
-                fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
-              }}
-            >
-              {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
-              {copied ? 'Copied to Clipboard!' : 'Copy Config'}
-            </button>
-          </div>
-          <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.82rem', color: '#38bdf8', overflowX: 'auto' }}>
-            {mcpConfigSnippet}
-          </pre>
-        </div>
-
-        {/* Registered Tools Grid */}
-        <div>
-          <h4 style={{ fontSize: '0.9rem', color: '#f8fafc', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Zap size={16} color="#eab308" /> Registered MCP Intelligence Tools ({mcpData?.tools ? mcpData.tools.length : '—'})
-          </h4>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            {!mcpData?.tools && (
-              <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Tool list unavailable — MCP server not reachable.</div>
-            )}
-            {(mcpData?.tools || []).map((t, idx) => (
-              <div key={idx} style={{ padding: '12px 14px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#818cf8', fontSize: '0.82rem', marginBottom: '4px' }}>
-                  {t.name}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  {t.description}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 2. BI EXPORT ADAPTERS */}
+      {/* BI EXPORT ADAPTERS */}
       <div className="glass-panel" style={{ padding: '24px' }}>
         <h2 style={{ fontSize: '1.4rem', color: '#f8fafc', marginBottom: '8px' }}>BI & Analytics Export Adapters</h2>
         <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '24px' }}>

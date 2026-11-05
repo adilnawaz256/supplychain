@@ -18,7 +18,7 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
   │  - Inventory Risk Engine      │
   └────┬──────────────────────────┘
        │
-   MCP SERVER (Read-Only Controlled Tools)
+   MCP TOOLS (Read-Only Database Tools)
        │
   REACT AGENT (Tool Selection & Reasoning Engine)
        │
@@ -87,7 +87,7 @@ python backend/database/seeds/load_retail_dataset.py --data-dir data --download 
 ```
 The 9 intelligences on the Intelligence tab (`GET /api/intelligences/{id}`) are recalculated from whatever is in the database.
 
-### 4. Start FastAPI Backend & MCP Services
+### 4. Start FastAPI Backend
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
