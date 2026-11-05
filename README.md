@@ -52,12 +52,10 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
 4. **BI Analytics Integration**:
    - Export adapters for PowerBI and Tableau formatted JSON and CSV datasets (`/api/bi/export`).
 
-5. **Advanced Analytics & Optimization Modules (Core Suite)**:
-   - **1. Advance Analytics (Pricing Optimization & Elasticity: `advance_analytics.py` / `src/advanced_analytics.py`)**: Syntetos-Boylan-Croston (SBC) demand-pattern classification (smooth, intermittent, erratic, lumpy), price elasticity fitting, linear/logit profit maximization, and single-period Newsvendor seasonal ordering (`/api/modules/pricing-optimization`).
-   - **2. Inventory Optimization (Policies: `src/policy_simulation.py`)**: Multi-policy continuous and periodic review simulation (`min_Q`, `base_stock`, `min_max`, `periodic_review`, `hybrid`) backtested against historical demand with fill rate and holding cost benchmarking (`/api/modules/policy-simulation`).
-   - **3. Customer Segmentation and LTV (RFM & LTV: `src/customer_ltv_segmentation.py`)**: Recency-Frequency-Monetary (RFM) scoring, K-Means LTV value clustering (Low, Mid, High tiers), and Random Forest supervised churn risk prediction (`/api/modules/customer-ltv`).
-   - **4. Recommendation Algorithm (Cross-Sell: `src/market_basket_analysis.py`)**: Apriori frequent itemset mining, Support/Confidence/Lift association rules, companion bundle checkout recommendations, and bottom-octile slow-mover inventory liquidation (`/api/modules/market-basket`).
-   - **5. Trade Area Modelling (Store Analysis: `src/trade_area_modelling.py`)**: Huff Gravity model with quadratic distance decay, 7-factor composite store attractiveness evaluation, territory market potential capture, and retail site expansion planning (`/api/modules/trade-area`).
+5. **Intelligence Tab (9 supply-chain intelligences, `backend/ml/intelligences/`)**:
+   Demand Forecasting, Inventory Planning, Inventory Policy Simulation, Pricing & Demand, Customer Value (LTV),
+   Market Basket, Supplier Segmentation, Assortment Planning and Trade Area (Huff model). Each is calculated from
+   the data in the database and served by `GET /api/intelligences/{id}`.
 
 ---
 
@@ -104,15 +102,11 @@ npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 6. Run Test Suite
-Runs unit tests for Database, Connectors, ML Forecasting, Optimization formulas, Risk classification, MCP tools, ReAct Agent, and End-to-End flow:
+### 6. Run the Backend via Docker Compose
+Runs only the backend API on port 8000 (run the frontend with `npm run dev` as above):
 ```bash
-pytest tests/
-```
-
-### 7. Run via Docker Compose (PostgreSQL Mode)
-```bash
-docker-compose up --build -d
+cd backend
+docker compose up --build -d
 ```
 
 ---
