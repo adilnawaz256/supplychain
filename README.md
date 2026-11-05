@@ -1,6 +1,6 @@
 # Supply Chain AI Decision-Intelligence Platform — Phase-1 POC
 
-An enterprise decision-intelligence platform unifying multi-source ERP/WMS data, statistical time-series demand forecasting, deterministic safety stock & reorder point optimization, Model Context Protocol (MCP) tools, Claude / ReAct Agent reasoning, and an interactive React Control Tower UI.
+An enterprise decision-intelligence platform unifying multi-source ERP/WMS data, statistical time-series demand forecasting, deterministic safety stock & reorder point optimization, Claude / ReAct Agent reasoning, and an interactive React Control Tower UI.
 
 ```
 DATA SOURCES (CSV / Mock ERP / Mock WMS)
@@ -18,7 +18,7 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
   │  - Inventory Risk Engine      │
   └────┬──────────────────────────┘
        │
-   MCP TOOLS (Read-Only Database Tools)
+   DATA TOOLS (Read-Only Database Tools)
        │
   REACT AGENT (Tool Selection & Reasoning Engine)
        │
@@ -41,7 +41,7 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
 
 2. **AI Assistant & ReAct Agent**:
    - Integrated AI Chat drawer connected to backend ReAct Agent (`/api/ai/chat`).
-   - Uses pure Python MCP tools to inspect real-time database state and calculate safety stock thresholds.
+   - Uses read-only Python data tools to inspect real-time database state and calculate safety stock thresholds.
    - Powered by Anthropic Claude 3.5 Sonnet with a deterministic offline mock fallback when API keys are omitted.
 
 3. **Multi-Source Connectors**:
@@ -118,4 +118,4 @@ Open the **Supply Chain Control Tower UI** at `http://localhost:3000`.
 1. Click **"Ask AI Assistant"** in the top navigation bar.
 2. Enter prompt:
    > *"Which products are at risk of stockout in the next 7 days?"*
-3. The ReAct Agent dynamically selects `get_inventory_risk`, queries PostgreSQL via MCP tools, evaluates lead times and demand forecasts, and responds with exact SKU metrics and supplier order quantities.
+3. The ReAct Agent dynamically selects `get_inventory_risk`, queries the database via its data tools, evaluates lead times and demand forecasts, and responds with exact SKU metrics and supplier order quantities.

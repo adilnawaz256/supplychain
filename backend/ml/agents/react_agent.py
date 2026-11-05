@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from mcp.tools import MCPToolRegistry
+from backend.ml.agents.tools import ToolRegistry
 from backend.app.core.ai_provider import get_ai_provider
 
 class ReActAgent:
@@ -8,20 +8,20 @@ class ReActAgent:
     ReAct (Reasoning + Acting) Agent for Supply Chain Intelligence.
     Workflow:
     1. Receive user query
-    2. Identify required data context & select MCP tools
+    2. Identify required data context & select data tools
     3. Execute read-only tools against backend services
     4. Pass observations & calculations to GenAI provider
     5. Format evidence-backed executive summary
     """
     def __init__(self, db: Session):
         self.db = db
-        self.tool_registry = MCPToolRegistry(db)
+        self.tool_registry = ToolRegistry(db)
         self.provider = get_ai_provider()
 
     def process_query(self, user_query: str) -> Dict[str, Any]:
         result = self.provider.generate_response(user_query, self.tool_registry)
         
-        reasoning_summary = f"Selected and executed MCP tools [{', '.join(result['tools_used'])}] to fetch live database state and calculate safety stock metrics."
+        reasoning_summary = f"Selected and executed data tools [{', '.join(result['tools_used'])}] to fetch live database state and calculate safety stock metrics."
         
         return {
             "response": result["response"],
