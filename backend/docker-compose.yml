@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   backend:
     build:
@@ -17,4 +19,19 @@ services:
       - AI_PROVIDER=${AI_PROVIDER:-openai}
     volumes:
       - ./data:/app/data
+    restart: always
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: wisualyst-frontend
+    ports:
+      - "3000:80"
+    env_file:
+      - .env
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+    depends_on:
+      - backend
     restart: always

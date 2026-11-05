@@ -5,9 +5,9 @@ from backend.app.services.services import SupplyChainService
 from backend.ml.forecasting.engine import StatisticalForecastEngine
 from backend.ml.risk.engine import InventoryRiskEngine
 
-class ToolRegistry:
+class MCPToolRegistry:
     """
-    Read-only data and analytics tools used by the AI Assistant (ReAct agent).
+    Standard Model Context Protocol (MCP) Tool Registry.
     Exposes strictly READ-ONLY data and analytical tools.
     No direct SQL execution allowed.
     """
@@ -184,4 +184,4 @@ class ToolRegistry:
             return self.service.get_trade_area()
 
         else:
-            raise ValueError(f"Unknown tool: {name}")
+            raise ValueError(f"Unknown MCP tool: {name}")

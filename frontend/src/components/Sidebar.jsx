@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { API_BASE_URL } from '../config/api';
+import React, { useState } from 'react';
 import {
   Home,
   LayoutGrid,
@@ -15,24 +14,13 @@ import {
   Settings,
   Sparkles,
   Layers,
-  Share2
+  Terminal
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpenAuth }) {
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState('Workspace');
-
-  useEffect(() => {
-    const loadWorkspace = () => {
-      fetch(`${API_BASE_URL}/api/workspace/current`)
-        .then(res => res.json())
-        .then(ws => { if (ws?.name) setWorkspaceName(ws.name); })
-        .catch(() => {});
-    };
-    loadWorkspace();
-    window.addEventListener('workspace-updated', loadWorkspace);
-    return () => window.removeEventListener('workspace-updated', loadWorkspace);
-  }, []);
+  const [currentWorkspace, setCurrentWorkspace] = useState('Global Supply Chain');
 
   const navItems = [
     { id: 'overview', label: 'Overview', icon: Home },
@@ -41,7 +29,7 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
     { id: 'recommendations', label: 'Recommendations', icon: FileText },
     { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'bi', label: 'BI Integrations', icon: Share2 },
+    { id: 'mcp', label: 'MCP Server Bridge', icon: Terminal },
   ];
 
   const userInitials = user?.user_metadata?.full_name
@@ -49,6 +37,13 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
     : 'AV';
   const userName = user?.user_metadata?.full_name || 'Avery Johnson';
   const userRole = user?.user_metadata?.company_name ? 'Owner' : 'Admin';
+
+  const workspacesList = [
+    'Global Supply Chain',
+    'North America Logistics',
+    'EMEA Distribution Hub',
+    'APAC Supply Network'
+  ];
 
   return (
     <aside style={{
@@ -199,11 +194,10 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
         flexDirection: 'column',
         gap: '12px'
       }}>
-        {/* Workspace (single workspace per installation) */}
-        <div>
+        {/* Workspace Dropdown */}
+        <div style={{ position: 'relative' }}>
           <button
-            onClick={() => onTabChange('workspaces')}
-            title="Workspace settings"
+            onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)}
             style={{
               width: '100%',
               display: 'flex',
@@ -219,10 +213,75 @@ export default function Sidebar({ activeTab, onTabChange, user, onSignOut, onOpe
           >
             <div>
               <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>Workspace</div>
-              <div style={{ fontSize: '0.85rem', color: '#0f172a', fontWeight: 600 }}>{workspaceName}</div>
+              <div style={{ fontSize: '0.85rem', color: '#0f172a', fontWeight: 600 }}>{currentWorkspace}</div>
             </div>
-            <Settings size={16} color="#94a3b8" />
+            <ChevronDown size={16} color="#94a3b8" />
           </button>
+
+          {workspaceMenuOpen && (
+            <div style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: 0,
+              right: 0,
+              marginBottom: '6px',
+              backgroundColor: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+              padding: '6px',
+              zIndex: 50
+            }}>
+              {workspacesList.map(ws => (
+                <div
+                  key={ws}
+                  onClick={() => {
+                    setCurrentWorkspace(ws);
+                    setWorkspaceMenuOpen(false);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.82rem',
+                    color: currentWorkspace === ws ? '#2563eb' : '#334155',
+                    fontWeight: currentWorkspace === ws ? 600 : 500,
+                    backgroundColor: currentWorkspace === ws ? '#eff6ff' : 'transparent',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentWorkspace !== ws) e.currentTarget.style.backgroundColor = '#f8fafc';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentWorkspace !== ws) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  {ws}
+                </div>
+              ))}
+              <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '4px 0' }} />
+              <div
+                onClick={() => {
+                  setWorkspaceMenuOpen(false);
+                  onNavigate('workspaces');
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  color: '#2563eb',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <span>+ Create New Workspace</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* User Profile Bar */}

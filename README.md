@@ -1,6 +1,6 @@
 # Supply Chain AI Decision-Intelligence Platform — Phase-1 POC
 
-An enterprise decision-intelligence platform unifying multi-source ERP/WMS data, statistical time-series demand forecasting, deterministic safety stock & reorder point optimization, Claude / ReAct Agent reasoning, and an interactive React Control Tower UI.
+An enterprise decision-intelligence platform unifying multi-source ERP/WMS data, statistical time-series demand forecasting, deterministic safety stock & reorder point optimization, Model Context Protocol (MCP) tools, Claude / ReAct Agent reasoning, and an interactive React Control Tower UI.
 
 ```
 DATA SOURCES (CSV / Mock ERP / Mock WMS)
@@ -18,7 +18,7 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
   │  - Inventory Risk Engine      │
   └────┬──────────────────────────┘
        │
-   DATA TOOLS (Read-Only Database Tools)
+   MCP SERVER (Read-Only Controlled Tools)
        │
   REACT AGENT (Tool Selection & Reasoning Engine)
        │
@@ -41,7 +41,7 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
 
 2. **AI Assistant & ReAct Agent**:
    - Integrated AI Chat drawer connected to backend ReAct Agent (`/api/ai/chat`).
-   - Uses read-only Python data tools to inspect real-time database state and calculate safety stock thresholds.
+   - Uses pure Python MCP tools to inspect real-time database state and calculate safety stock thresholds.
    - Powered by Anthropic Claude 3.5 Sonnet with a deterministic offline mock fallback when API keys are omitted.
 
 3. **Multi-Source Connectors**:
@@ -52,10 +52,12 @@ FASTAPI BACKEND (Application Services, Repositories, API Routes)
 4. **BI Analytics Integration**:
    - Export adapters for PowerBI and Tableau formatted JSON and CSV datasets (`/api/bi/export`).
 
-5. **Intelligence Tab (9 supply-chain intelligences, `backend/ml/intelligences/`)**:
-   Demand Forecasting, Inventory Planning, Inventory Policy Simulation, Pricing & Demand, Customer Value (LTV),
-   Market Basket, Supplier Segmentation, Assortment Planning and Trade Area (Huff model). Each is calculated from
-   the data in the database and served by `GET /api/intelligences/{id}`.
+5. **Advanced Analytics & Optimization Modules (Core Suite)**:
+   - **1. Advance Analytics (Pricing Optimization & Elasticity: `advance_analytics.py` / `src/advanced_analytics.py`)**: Syntetos-Boylan-Croston (SBC) demand-pattern classification (smooth, intermittent, erratic, lumpy), price elasticity fitting, linear/logit profit maximization, and single-period Newsvendor seasonal ordering (`/api/modules/pricing-optimization`).
+   - **2. Inventory Optimization (Policies: `src/policy_simulation.py`)**: Multi-policy continuous and periodic review simulation (`min_Q`, `base_stock`, `min_max`, `periodic_review`, `hybrid`) backtested against historical demand with fill rate and holding cost benchmarking (`/api/modules/policy-simulation`).
+   - **3. Customer Segmentation and LTV (RFM & LTV: `src/customer_ltv_segmentation.py`)**: Recency-Frequency-Monetary (RFM) scoring, K-Means LTV value clustering (Low, Mid, High tiers), and Random Forest supervised churn risk prediction (`/api/modules/customer-ltv`).
+   - **4. Recommendation Algorithm (Cross-Sell: `src/market_basket_analysis.py`)**: Apriori frequent itemset mining, Support/Confidence/Lift association rules, companion bundle checkout recommendations, and bottom-octile slow-mover inventory liquidation (`/api/modules/market-basket`).
+   - **5. Trade Area Modelling (Store Analysis: `src/trade_area_modelling.py`)**: Huff Gravity model with quadratic distance decay, 7-factor composite store attractiveness evaluation, territory market potential capture, and retail site expansion planning (`/api/modules/trade-area`).
 
 ---
 
@@ -87,7 +89,7 @@ python backend/database/seeds/load_retail_dataset.py --data-dir data --download 
 ```
 The 9 intelligences on the Intelligence tab (`GET /api/intelligences/{id}`) are recalculated from whatever is in the database.
 
-### 4. Start FastAPI Backend
+### 4. Start FastAPI Backend & MCP Services
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -102,11 +104,15 @@ npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 6. Run the Backend via Docker Compose
-Runs only the backend API on port 8000 (run the frontend with `npm run dev` as above):
+### 6. Run Test Suite
+Runs unit tests for Database, Connectors, ML Forecasting, Optimization formulas, Risk classification, MCP tools, ReAct Agent, and End-to-End flow:
 ```bash
-cd backend
-docker compose up --build -d
+pytest tests/
+```
+
+### 7. Run via Docker Compose (PostgreSQL Mode)
+```bash
+docker-compose up --build -d
 ```
 
 ---
@@ -118,4 +124,4 @@ Open the **Supply Chain Control Tower UI** at `http://localhost:3000`.
 1. Click **"Ask AI Assistant"** in the top navigation bar.
 2. Enter prompt:
    > *"Which products are at risk of stockout in the next 7 days?"*
-3. The ReAct Agent dynamically selects `get_inventory_risk`, queries the database via its data tools, evaluates lead times and demand forecasts, and responds with exact SKU metrics and supplier order quantities.
+3. The ReAct Agent dynamically selects `get_inventory_risk`, queries PostgreSQL via MCP tools, evaluates lead times and demand forecasts, and responds with exact SKU metrics and supplier order quantities.

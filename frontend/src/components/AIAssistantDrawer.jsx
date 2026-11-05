@@ -6,9 +6,9 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hello! I am your Wisualyst AI Decision Assistant powered by ReAct & Live Data Tools.\n\nYou can ask me questions like:\n• *'Which products are at risk of stockout in the next 7 days?'*\n• *'Why are my critical SKUs at risk?'*\n• *'What should we reorder this week?'*",
+      text: "Hello! I am your Wisualyst AI Decision Assistant powered by ReAct & MCP Tools.\n\nYou can ask me questions like:\n• *'Which products are at risk of stockout in the next 7 days?'*\n• *'Why are my critical SKUs at risk?'*\n• *'What should we reorder this week?'*",
       tools_used: [],
-      reasoning: "System initialized with live database tools."
+      reasoning: "System initialized with live database MCP tools."
     }
   ]);
   const [input, setInput] = useState('');
@@ -109,7 +109,7 @@ export default function AIAssistantDrawer({ isOpen, onClose }) {
               Wisualyst AI Assistant
             </h3>
             <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
-              ReAct Agent + Live Data Tools
+              ReAct Agent + Live MCP Tools
             </span>
           </div>
         </div>

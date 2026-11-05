@@ -220,7 +220,6 @@ export default function WorkspacesView({ onNavigate, onOpenInviteModal }) {
           modules: activeModulesList
         })
       });
-      window.dispatchEvent(new Event('workspace-updated'));
       onNavigate('datasources');
     } catch (err) {
       onNavigate('datasources');
