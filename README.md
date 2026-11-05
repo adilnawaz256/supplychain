@@ -71,20 +71,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### 3. Seed Database with Realistic Sample Data
-Generates 50+ products, 3 warehouses, suppliers, 180 days of daily sales, stockout risk scenarios, and open POs:
-```bash
-python database/seeds/seed_db.py
-```
-
-**Or load the retail dataset** (`Data.xlsx` + `Trade_Area_Synthetic_Inputs.xlsx` from
-[ahmedkhancgt/supply-chain](https://github.com/ahmedkhancgt/supply-chain/tree/claude/python-file-review-ikw2q4/data)).
-It cleans the 140,000 rows to 139,953 the same way the original analysis scripts do and loads products, suppliers,
-countries (as warehouses), customers, invoices (orders + order lines), sales and the trade-area inputs.
-`--wipe` first deletes all business data and saved ML results but keeps users, roles and settings:
-```bash
-python backend/database/seeds/load_retail_dataset.py --data-dir data --download --wipe
-```
+### 3. Connect the Database
+Set `DATABASE_URL` in `.env` to your existing database. Tables are created automatically on startup;
+new data is imported from the **Workspace & Data Sources** page.
 The 9 intelligences on the Intelligence tab (`GET /api/intelligences/{id}`) are recalculated from whatever is in the database.
 
 ### 4. Start FastAPI Backend
