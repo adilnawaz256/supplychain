@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
 from backend.app.core.database import Base, engine, SessionLocal, add_missing_columns
-from backend.app.api.router import router
+from backend.api.router import router
 import backend.app.models.models
 from backend.app.models.models import User
 

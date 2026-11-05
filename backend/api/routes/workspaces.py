@@ -12,7 +12,7 @@ def get_current_workspace(db: Session = Depends(get_db)):
     cfg = db.query(WorkspacePipelineConfig).filter(WorkspacePipelineConfig.workspace_key == "default").first()
     return {
         "status": "SUCCESS",
-        "workspace_id": "ws_dubai_retail_01",
+        "workspace_id": "default",
         "name": cfg.workspace_name if cfg and cfg.workspace_name else "Global Supply Chain",
         "industry": cfg.industry_vertical if cfg and cfg.industry_vertical else "Retail & Distribution",
         "region": cfg.workspace_region if cfg and cfg.workspace_region else "UAE / GCC Hub",
@@ -43,7 +43,7 @@ def create_workspace(payload: Dict[str, Any] = Body(...), db: Session = Depends(
 
     return {
         "status": "SUCCESS",
-        "workspace_id": "ws_dubai_retail_01",
+        "workspace_id": "default",
         "name": cfg.workspace_name,
         "industry": cfg.industry_vertical,
         "region": cfg.workspace_region,
@@ -99,6 +99,6 @@ def invite_workspace_member(payload: Dict[str, Any] = Body(...), db: Session = D
 def launch_workspace():
     return {
         "status": "LAUNCHED",
-        "workspace_id": "ws_dubai_retail_01",
+        "workspace_id": "default",
         "message": "Workspace successfully configured and launched!"
     }

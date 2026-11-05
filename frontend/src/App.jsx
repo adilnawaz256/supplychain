@@ -33,7 +33,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     const hash = window.location.hash.replace('#', '').toLowerCase();
-    if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'mcp', 'access-control'].includes(hash)) {
+    if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'bi', 'access-control'].includes(hash)) {
       return hash;
     }
     return 'overview';
@@ -51,7 +51,7 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '').toLowerCase();
-      if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'mcp', 'access-control'].includes(hash)) {
+      if (['overview', 'workspaces', 'datasources', 'intelligence', 'recommendations', 'alerts', 'dashboard', 'bi', 'access-control'].includes(hash)) {
         setActiveTab(hash);
       }
     };
@@ -303,7 +303,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'mcp' && (
+          {activeTab === 'bi' && (
             <div style={{ padding: '0 32px 32px 32px' }}>
               <BIIntegrationsPanel />
             </div>
